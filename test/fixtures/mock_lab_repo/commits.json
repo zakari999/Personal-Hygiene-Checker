@@ -1,0 +1,50 @@
+[
+  {
+    "hash": "7a8b9c0",
+    "date": "2026-11-12",
+    "author": "Kwame",
+    "subject": "Readme edit"
+  },
+  {
+    "hash": "6d5e4f3",
+    "date": "2026-11-12",
+    "author": "Kwame",
+    "subject": "Readme diagnosis edit"
+  },
+  {
+    "hash": "5c4b3a2",
+    "date": "2026-11-11",
+    "author": "Kwame",
+    "subject": "Revise issues in README for clarity and detail"
+  },
+  {
+    "hash": "4b3a291",
+    "date": "2026-11-11",
+    "author": "Kwame",
+    "subject": "Revise primary colour description in README"
+  },
+  {
+    "hash": "3a2918f",
+    "date": "2026-11-10",
+    "author": "Kwame",
+    "subject": "description in README"
+  },
+  {
+    "hash": "2918f7e",
+    "date": "2026-11-10",
+    "author": "Kwame",
+    "subject": "Added visual system"
+  },
+  {
+    "hash": "18f7e6d",
+    "date": "2026-11-09",
+    "author": "Kwame",
+    "subject": "Why riders trust Wheelhouse"
+  },
+  {
+    "hash": "e0c6f94",
+    "date": "2026-11-08",
+    "author": "Kwame",
+    "subject": "Initial commit before rebuild"
+  }
+]

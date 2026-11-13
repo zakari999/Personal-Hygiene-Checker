@@ -84,52 +84,102 @@ export const RUBRICS = {
       {
         id: 'readability_naming',
         name: 'readability & naming',
-        description: 'Clear, idiomatic code with meaningful, convention-following names and consistent formatting; no cryptic names, convoluted logic, or mixed styles.'
+        description: 'Clear, idiomatic code with meaningful, convention-following names and consistent formatting; no cryptic names, convoluted logic, or mixed styles.',
+        checks: [
+          'Meaningful, convention-following variable and function names (no cryptic single-letter names in business logic).',
+          'Consistent formatting, indentations, and naming conventions (camelCase, snake_case consistency).',
+          'Clean, readable control flow without deeply nested or convoluted conditional logic.'
+        ]
       },
       {
         id: 'structure_architecture',
         name: 'structure & architecture',
-        description: 'Modular structure with respected layer boundaries and separation of concerns; no god-classes, circular dependencies, or business logic in controllers.'
+        description: 'Modular structure with respected layer boundaries and separation of concerns; no god-classes, circular dependencies, or business logic in controllers.',
+        checks: [
+          'Modular code organization with separation of concerns between controllers, services, and models.',
+          'No bloated "god files" (> 500 lines without modularization) or circular imports.',
+          'Clean module interfaces with explicit export/import boundaries.'
+        ]
       },
       {
         id: 'correctness_robustness',
         name: 'correctness & robustness',
-        description: 'Accurate code with edge cases and resources handled; no dead code, leftover debug output, leaked connections, or race conditions.'
+        description: 'Accurate code with edge cases and resources handled; no dead code, leftover debug output, leaked connections, or race conditions.',
+        checks: [
+          'Edge cases and boundary conditions handled properly (null/undefined checks).',
+          'No dead code, commented-out code blocks, or leftover debug commands (debugger, raw console.log).',
+          'Resources and open connections (streams, sockets, database clients) properly closed.'
+        ]
       },
       {
         id: 'error_observability',
         name: 'error handling & observability',
-        description: 'Errors handled meaningfully and logged appropriately; no empty catch blocks, swallowed exceptions, System.out debugging, or sensitive data in logs.'
+        description: 'Errors handled meaningfully and logged appropriately; no empty catch blocks, swallowed exceptions, System.out debugging, or sensitive data in logs.',
+        checks: [
+          'No empty catch blocks or swallowed unhandled rejections.',
+          'Structured, meaningful logging without exposing sensitive data (tokens, passwords) in logs.',
+          'Graceful error recovery and appropriate HTTP status error codes.'
+        ]
       },
       {
         id: 'security_data_protection',
         name: 'security & data protection',
-        description: 'Inputs validated, access controlled, and credentials externalized; no injection risks, missing authorization checks, or hardcoded secrets and tokens.'
+        description: 'Inputs validated, access controlled, and credentials externalized; no injection risks, missing authorization checks, or hardcoded secrets and tokens.',
+        checks: [
+          'No hardcoded API keys, JWT secrets, database credentials, or private tokens in source code.',
+          'User inputs validated and sanitized before database or command execution (no injection vectors).',
+          'Authorization and access control enforced on protected resources.'
+        ]
       },
       {
         id: 'config_dependency',
         name: 'configuration & dependency hygiene',
-        description: 'Externalized config and lean, declared dependencies; no hardcoded URLs or magic values, unused imports, or committed build artifacts.'
+        description: 'Externalized config and lean, declared dependencies; no hardcoded URLs or magic values, unused imports, or committed build artifacts.',
+        checks: [
+          'Configuration externalized to environment variables (.env.example provided).',
+          'No hardcoded local URLs (e.g. http://localhost:3000) in production source files.',
+          'No committed build artifacts, temp files, or dependency folders (node_modules, dist, .DS_Store).'
+        ]
       },
       {
         id: 'api_database',
         name: 'API & database hygiene',
-        description: 'Well-formed endpoints and sound data access; correct status codes, proper keys and indexes; no leaked internal fields, N+1 queries, or SELECT * misuse.'
+        description: 'Well-formed endpoints and sound data access; correct status codes, proper keys and indexes; no leaked internal fields, N+1 queries, or SELECT * misuse.',
+        checks: [
+          'RESTful endpoint naming and appropriate HTTP status codes (200, 201, 400, 404, 500).',
+          'Safe database queries avoiding SELECT * and N+1 query patterns.',
+          'No internal or sensitive database fields leaked in API response payloads.'
+        ]
       },
       {
         id: 'test_hygiene',
         name: 'test hygiene',
-        description: 'Meaningful, passing, isolated tests covering key behavior; no skipped, commented-out, flaky, or assertion-free tests.'
+        description: 'Meaningful, passing, isolated tests covering key behavior; no skipped, commented-out, flaky, or assertion-free tests.',
+        checks: [
+          'Test suite present and passing cleanly (npm test or pytest).',
+          'No disabled or skipped tests (test.skip, it.skip, xit, disabled tests).',
+          'Meaningful assertions testing edge cases rather than empty/tautological assertions.'
+        ]
       },
       {
         id: 'build_delivery_vc',
         name: 'build, delivery & version control',
-        description: 'Reproducible build, green CI, and clean history; no failing builds, manual-only setup, or WIP/"fix" commit noise and committed artifacts.'
+        description: 'Reproducible build, green CI, and clean history; no failing builds, manual-only setup, or WIP/"fix" commit noise and committed artifacts.',
+        checks: [
+          'Reproducible build scripts declared in package.json or build configurations.',
+          'Clean, imperative, scoped git commit history without "wip", "fix", or "temp" noise.',
+          'Proper .gitignore preventing tracking of dependency folders and temporary logs.'
+        ]
       },
       {
         id: 'doc_completeness',
         name: 'documentation & completeness',
-        description: 'Clear README, setup steps, and a complete runnable submission; no missing prerequisites, broken instructions, unresolved references, or missing files.'
+        description: 'Clear README, setup steps, and a complete runnable submission; no missing prerequisites, broken instructions, unresolved references, or missing files.',
+        checks: [
+          'Clear, comprehensive README with project overview and prerequisites.',
+          'Step-by-step runnable local setup instructions ("how to run locally").',
+          'All referenced files, images, and links resolve without broken paths.'
+        ]
       }
     ]
   }

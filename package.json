@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node src/server/server.js",
     "check": "node bin/cli.js",
-    "test": "node test/verify_sample.js"
+    "test": "node test/run_all_tests.js"
   },
   "keywords": [
     "hygiene-checker",

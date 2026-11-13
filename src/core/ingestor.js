@@ -89,6 +89,25 @@ export function syncRepository(target, cacheBaseDir = path.resolve(process.cwd()
  */
 export function extractCommitHistory(repoPath) {
   try {
+    // Check if repoPath has its own .git folder
+    const gitDir = path.join(repoPath, '.git');
+    if (!fs.existsSync(gitDir)) {
+      // Check if a fixture commits.json or commits.log exists
+      const fixtureCommits = path.join(repoPath, 'commits.json');
+      if (fs.existsSync(fixtureCommits)) {
+        return JSON.parse(fs.readFileSync(fixtureCommits, 'utf-8'));
+      }
+      // If repoPath is not its own git root, do not leak parent git log
+      try {
+        const topLevel = execSync('git rev-parse --show-toplevel', { cwd: repoPath, stdio: 'pipe' }).toString().trim();
+        if (path.resolve(topLevel) !== path.resolve(repoPath)) {
+          return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial submission export' }];
+        }
+      } catch {
+        return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial submission export' }];
+      }
+    }
+
     const rawLog = execSync('git log -n 50 --pretty=format:"%h%x09%ad%x09%an%x09%s" --date=short', {
       cwd: repoPath,
       stdio: 'pipe'
@@ -107,7 +126,7 @@ export function extractCommitHistory(repoPath) {
       };
     });
   } catch (err) {
-    return [{ hash: 'HEAD', date: 'unknown', author: 'unknown', subject: 'Initial commit (shallow/exported)' }];
+    return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial commit (shallow/exported)' }];
   }
 }
 
@@ -130,10 +149,18 @@ export function checkMarkdownTruncation(content) {
   const lineNumber = lastIdx + 1;
 
   // Patterns indicating truncation:
-  // 1. Ends mid-word or open quotation e.g. "Proof sits in "About Whe
-  // 2. Ends with trailing dangling conjunction: "and", "or", "the", "with", "in", "to", "but"
-  // 3. Unclosed markdown table row (starts with | but doesn't end with | or has uneven pipes)
-  // 4. Missing terminal punctuation on a long prose sentence
+  // 1. Unclosed code block fences (e.g. ``` without closing ```)
+  const codeFences = (content.match(/^```/gm) || []).length;
+  if (codeFences % 2 !== 0) {
+    return {
+      isTruncated: true,
+      lineNumber,
+      lastLine,
+      details: 'Unclosed code block (missing closing ``` fence)'
+    };
+  }
+
+  // 2. Ends mid-word or open quotation e.g. "Proof sits in "About Whe
   const danglingWordPattern = /\b(the|and|or|with|in|to|of|about|for|from|by|that|this|which|is|are|whe|th|wh)$/i;
   const oddQuotes = (lastLine.match(/"/g) || []).length % 2 !== 0;
 
@@ -146,6 +173,17 @@ export function checkMarkdownTruncation(content) {
     };
   }
 
+  // 3. Unclosed markdown link or bracket: e.g. [some text](http... or [text without
+  if (/\[[^\]]*$/.test(lastLine) || /\[.*?\]\([^\)]*$/.test(lastLine)) {
+    return {
+      isTruncated: true,
+      lineNumber,
+      lastLine,
+      details: `Unclosed markdown bracket or link: "${lastLine}"`
+    };
+  }
+
+  // 4. Ends with trailing dangling word
   if (danglingWordPattern.test(lastLine)) {
     return {
       isTruncated: true,
@@ -155,12 +193,23 @@ export function checkMarkdownTruncation(content) {
     };
   }
 
+  // 5. Unclosed markdown table row (starts with | but doesn't end with | or has uneven pipes)
   if (lastLine.startsWith('|') && !lastLine.endsWith('|')) {
     return {
       isTruncated: true,
       lineNumber,
       lastLine,
       details: `Incomplete markdown table row: "${lastLine}"`
+    };
+  }
+
+  // 6. Trailing dangling dash or unclosed parenthesis at end of sentence
+  if (/—$|(?<!\([^\)]*)\($/.test(lastLine)) {
+    return {
+      isTruncated: true,
+      lineNumber,
+      lastLine,
+      details: `Cuts off on trailing punctuation: "${lastLine}"`
     };
   }
 
@@ -233,9 +282,11 @@ export function ingestRepository(inputUrlOrPath) {
   }
 
   // Identify secondary source files (HTML, CSS, JS, etc.)
-  const priorityExtensions = ['.html', '.css', '.js', '.ts', '.py', '.json'];
+  const priorityExtensions = ['.html', '.css', '.js', '.ts', '.py'];
+  const excludedFiles = new Set(['commits.json', 'package-lock.json', 'package.json']);
   const secondaryFiles = allFiles
     .filter(f => !primaryReadmePath || f.relPath !== primaryReadmePath.relPath)
+    .filter(f => !excludedFiles.has(path.basename(f.relPath)))
     .filter(f => {
       const ext = path.extname(f.relPath).toLowerCase();
       return priorityExtensions.includes(ext);

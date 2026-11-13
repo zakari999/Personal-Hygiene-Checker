@@ -1,0 +1,32 @@
+/* Kwame's Wheelhouse Rebuild Styles */
+:root {
+  --primary: #1e3a8a;
+  --bg: #f8fafc;
+  --text: #0f172a;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.container {
+  width: 960px;
+  margin: 0 auto;
+}
+
+nav a {
+  padding: 8px 12px;
+  text-decoration: none;
+  color: var(--primary);
+}
+
+button {
+  cursor: pointer;
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+}

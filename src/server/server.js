@@ -23,6 +23,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(projectRoot, 'public')));
 
+// Serve test fixtures for local testing/sketches
+app.use('/fixtures', express.static(path.join(projectRoot, 'test/fixtures')));
+
 // API: Get Rubrics
 app.get('/api/rubrics', (req, res) => {
   res.json({
@@ -35,7 +38,7 @@ app.get('/api/config', (req, res) => {
   const hasKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 5);
   res.json({
     hasGeminiKey: hasKey,
-    defaultModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+    defaultModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash'
   });
 });
 
@@ -82,9 +85,19 @@ app.post('/api/config', (req, res) => {
   });
 });
 
+// Helper to sanitize artifacts for client-side citation viewer
+function serializeArtifacts(artifacts = []) {
+  return artifacts.map(art => ({
+    index: art.index,
+    name: art.name,
+    lineCount: art.lineCount,
+    lines: (art.rawContent || '').split(/\r?\n/)
+  }));
+}
+
 // API: Run Repository Hygiene Check
 app.post('/api/check', async (req, res) => {
-  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.5-flash' } = req.body;
+  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.0-flash' } = req.body;
 
   if (!repoUrl) {
     return res.status(400).json({ error: 'Repository URL is required.' });
@@ -105,6 +118,7 @@ app.post('/api/check', async (req, res) => {
       repo: repoBundle.target.name,
       commitCount: repoBundle.commits.length,
       latestCommit: repoBundle.commits[0] || null,
+      artifacts: serializeArtifacts(repoBundle.artifacts),
       result
     });
   } catch (error) {
@@ -118,7 +132,7 @@ app.post('/api/check', async (req, res) => {
 
 // API: Re-check Repository (With Diff against previous run)
 app.post('/api/recheck', async (req, res) => {
-  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.5-flash', previousResult } = req.body;
+  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.0-flash', previousResult } = req.body;
 
   if (!repoUrl) {
     return res.status(400).json({ error: 'Repository URL is required.' });
@@ -141,6 +155,7 @@ app.post('/api/recheck', async (req, res) => {
       repo: repoBundle.target.name,
       commitCount: repoBundle.commits.length,
       latestCommit: repoBundle.commits[0] || null,
+      artifacts: serializeArtifacts(repoBundle.artifacts),
       result: currentResult,
       diff
     });

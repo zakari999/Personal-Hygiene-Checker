@@ -1,8 +1,10 @@
 // Client-side Application Logic for Repo Hygiene Checker
 
 let currentResult = null;
+let currentArtifacts = [];
 let previousResult = null;
 let checklistMode = true;
+let currentFilter = 'all';
 const checkedItems = new Set();
 
 // Elements
@@ -33,8 +35,18 @@ const subSummary = document.getElementById('subSummary');
 const categoriesList = document.getElementById('categoriesList');
 const btnRecheck = document.getElementById('btnRecheck');
 const btnCopyReport = document.getElementById('btnCopyReport');
+const btnDownloadReport = document.getElementById('btnDownloadReport');
 const btnToggleChecklist = document.getElementById('btnToggleChecklist');
 const checklistLabel = document.getElementById('checklistLabel');
+
+// Code Viewer Modal Elements
+const modalCodeViewer = document.getElementById('modalCodeViewer');
+const btnCloseCodeViewer = document.getElementById('btnCloseCodeViewer');
+const btnDismissCodeViewer = document.getElementById('btnDismissCodeViewer');
+const codeViewerTitle = document.getElementById('codeViewerTitle');
+const codeViewerSubtitle = document.getElementById('codeViewerSubtitle');
+const codeViewerContent = document.getElementById('codeViewerContent');
+const codeViewerFooter = document.getElementById('codeViewerFooter');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -53,13 +65,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnCancelModal.addEventListener('click', () => modalConfig.classList.add('hidden'));
   btnSaveConfig.addEventListener('click', saveConfig);
 
+  // Code Viewer handlers
+  btnCloseCodeViewer.addEventListener('click', () => modalCodeViewer.classList.add('hidden'));
+  btnDismissCodeViewer.addEventListener('click', () => modalCodeViewer.classList.add('hidden'));
+
   // Check & Recheck handlers
   btnRunCheck.addEventListener('click', () => runCheck(false));
   btnRecheck.addEventListener('click', () => runCheck(true));
 
   // Utility buttons
   btnCopyReport.addEventListener('click', copyReportToClipboard);
+  if (btnDownloadReport) {
+    btnDownloadReport.addEventListener('click', downloadReportMarkdown);
+  }
   btnToggleChecklist.addEventListener('click', toggleChecklistMode);
+
+  // Filter Tabs
+  document.querySelectorAll('.filter-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.filter-tab').forEach(t => {
+        t.className = 'filter-tab px-3 py-1 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-800 text-slate-400 border border-slate-700';
+      });
+      tab.className = 'filter-tab px-3 py-1 rounded-lg text-xs font-medium bg-rose-500/20 text-rose-300 border border-rose-500/30';
+      currentFilter = tab.getAttribute('data-filter');
+      if (currentResult) {
+        renderResults({ result: currentResult }, null);
+      }
+    });
+  });
 });
 
 // Fetch Server & Key Configuration
@@ -114,7 +147,7 @@ async function runCheck(isRecheck = false) {
   }
 
   const rubricId = selectRubric.value;
-  const model = modalModel.value || 'gemini-2.5-flash';
+  const model = modalModel.value || 'gemini-2.0-flash';
 
   // UI state
   progressCard.classList.remove('hidden');
@@ -148,6 +181,7 @@ async function runCheck(isRecheck = false) {
       previousResult = currentResult;
     }
     currentResult = data.result;
+    currentArtifacts = data.artifacts || [];
 
     renderResults(data, isRecheck ? data.diff : null);
   } catch (err) {
@@ -196,42 +230,60 @@ function renderResults(data, diff) {
   // Render Category Cards
   categoriesList.innerHTML = '';
 
-  const activeCategories = result.categories.filter(c => c.items && c.items.length > 0);
+  let filteredCategories = result.categories || [];
+  if (currentFilter === 'penalties') {
+    filteredCategories = filteredCategories.filter(c => c.items && c.items.length > 0);
+  } else if (currentFilter === 'clean') {
+    filteredCategories = filteredCategories.filter(c => !c.items || c.items.length === 0);
+  }
 
-  if (activeCategories.length === 0) {
+  if (filteredCategories.length === 0) {
     categoriesList.innerHTML = `
       <div class="p-8 rounded-2xl bg-emerald-950/30 border border-emerald-700/40 text-center space-y-2">
         <i class="ph-bold ph-seal-check text-4xl text-emerald-400"></i>
         <h3 class="text-base font-semibold text-emerald-200">Zero Sloppiness Detected</h3>
-        <p class="text-xs text-emerald-400">Your repository meets all professional hygiene criteria without any deductions.</p>
+        <p class="text-xs text-emerald-400">No issues found matching the active filter.</p>
       </div>
     `;
     return;
   }
 
-  activeCategories.forEach((cat, catIdx) => {
+  filteredCategories.forEach((cat, catIdx) => {
     const card = document.createElement('div');
     card.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-lg';
 
     let itemsHtml = '';
-    cat.items.forEach((item, itemIdx) => {
-      const itemKey = `${cat.category}-${item.citation}-${itemIdx}`;
-      const isChecked = checkedItems.has(itemKey);
+    const hasItems = cat.items && cat.items.length > 0;
 
-      itemsHtml += `
-        <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition-colors">
-          ${checklistMode ? `
-            <input type="checkbox" id="${itemKey}" data-key="${itemKey}" ${isChecked ? 'checked' : ''} 
-              class="item-checkbox mt-1 w-4 h-4 rounded border-slate-700 text-rose-600 focus:ring-rose-500 focus:ring-offset-slate-900 cursor-pointer">
-          ` : ''}
-          <div class="text-xs leading-relaxed text-slate-300 ${isChecked ? 'line-through opacity-50' : ''}">
-            <span class="font-mono-code font-semibold text-slate-200 citation-tag">${escapeHtml(item.citation)}</span>
-            <span class="text-slate-500 font-bold mx-1">—</span>
-            <span>${escapeHtml(item.issue)}</span>
-          </div>
+    if (!hasItems) {
+      itemsHtml = `
+        <div class="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-xs text-emerald-300 flex items-center gap-2">
+          <i class="ph-bold ph-check-circle text-emerald-400"></i>
+          <span>Passing cleanly — no sloppiness detected in this category.</span>
         </div>
       `;
-    });
+    } else {
+      cat.items.forEach((item, itemIdx) => {
+        const itemKey = `${cat.category}-${item.citation}-${itemIdx}`;
+        const isChecked = checkedItems.has(itemKey);
+
+        itemsHtml += `
+          <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition-colors">
+            ${checklistMode ? `
+              <input type="checkbox" id="${itemKey}" data-key="${itemKey}" ${isChecked ? 'checked' : ''} 
+                class="item-checkbox mt-1 w-4 h-4 rounded border-slate-700 text-rose-600 focus:ring-rose-500 focus:ring-offset-slate-900 cursor-pointer">
+            ` : ''}
+            <div class="text-xs leading-relaxed text-slate-300 ${isChecked ? 'line-through opacity-50' : ''}">
+              <button class="citation-btn font-mono-code font-semibold text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 px-1.5 py-0.5 rounded border border-rose-500/20 text-left transition-colors" data-citation="${escapeHtml(item.citation)}">
+                ${escapeHtml(item.citation)}
+              </button>
+              <span class="text-slate-500 font-bold mx-1">—</span>
+              <span>${escapeHtml(item.issue)}</span>
+            </div>
+          </div>
+        `;
+      });
+    }
 
     card.innerHTML = `
       <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-slate-800/80 pb-3">
@@ -239,7 +291,7 @@ function renderResults(data, diff) {
           <h3 class="text-base font-bold text-white tracking-tight">${escapeHtml(cat.category)}</h3>
           <span class="text-xs font-medium text-slate-400">Sloppiness Level ${cat.level}</span>
         </div>
-        <div class="font-mono-code font-bold text-sm text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-lg border border-rose-500/20">
+        <div class="font-mono-code font-bold text-sm ${cat.deduction > 0 ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'} px-2.5 py-1 rounded-lg border">
           ${cat.deductionFormatted}
         </div>
       </div>
@@ -267,7 +319,6 @@ function renderResults(data, diff) {
       } else {
         checkedItems.delete(key);
       }
-      // re-render checklist styling
       const textContainer = e.target.nextElementSibling;
       if (textContainer) {
         if (e.target.checked) {
@@ -278,6 +329,61 @@ function renderResults(data, diff) {
       }
     });
   });
+
+  // Attach citation button listeners to open code viewer
+  document.querySelectorAll('.citation-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const citation = e.target.getAttribute('data-citation');
+      openCitationViewer(citation);
+    });
+  });
+}
+
+// Open Citation Code Viewer Modal
+function openCitationViewer(citation) {
+  if (!citation) return;
+
+  // Citation format: "artifact <N>, line <L>" or "artifact <N>, commits"
+  const artMatch = citation.match(/artifact\s*(\d+)/i);
+  const lineMatch = citation.match(/line\s*(\d+)/i);
+
+  const artIndex = artMatch ? parseInt(artMatch[1], 10) : 1;
+  const targetLine = lineMatch ? parseInt(lineMatch[1], 10) : null;
+
+  const targetArtifact = currentArtifacts.find(a => a.index === artIndex) || currentArtifacts[0];
+
+  if (!targetArtifact) {
+    alert(`Could not locate source artifact for citation: "${citation}"`);
+    return;
+  }
+
+  codeViewerTitle.textContent = `${targetArtifact.name} (Artifact ${targetArtifact.index})`;
+  codeViewerSubtitle.textContent = targetLine
+    ? `Inspecting line ${targetLine} of ${targetArtifact.lineCount} total lines`
+    : `Inspecting ${targetArtifact.name}`;
+
+  codeViewerFooter.textContent = `Citation: ${citation} in ${targetArtifact.name}`;
+
+  const lines = targetArtifact.lines || [];
+  let html = '';
+
+  const startLine = targetLine ? Math.max(1, targetLine - 8) : 1;
+  const endLine = targetLine ? Math.min(lines.length, targetLine + 8) : Math.min(lines.length, 50);
+
+  for (let i = startLine; i <= endLine; i++) {
+    const lineText = lines[i - 1] || '';
+    const isTarget = i === targetLine;
+
+    html += `
+      <div class="flex items-start py-0.5 px-2 rounded ${isTarget ? 'line-highlight font-semibold text-rose-200' : 'text-slate-400 hover:text-slate-200'}">
+        <span class="w-12 shrink-0 select-none text-right pr-4 text-slate-600 font-mono-code">${i}</span>
+        <span class="whitespace-pre-wrap break-all">${escapeHtml(lineText)}</span>
+      </div>
+    `;
+  }
+
+  codeViewerContent.innerHTML = html;
+  modalCodeViewer.classList.remove('hidden');
 }
 
 // Copy full raw report matching platform output
@@ -288,6 +394,21 @@ function copyReportToClipboard() {
   }).catch(() => {
     prompt('Copy the report below:', currentResult.reportText);
   });
+}
+
+// Download Report as Markdown (.md)
+function downloadReportMarkdown() {
+  if (!currentResult || !currentResult.reportText) return;
+
+  const blob = new Blob([currentResult.reportText], { type: 'text/markdown;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `hygiene-report-${Date.now()}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // Toggle Checklist Mode

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wheelhouse Bicycles — Mobile-First Repair Service</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="#services">Services</a>
+      <a href="#location">Hours & Location</a>
+      <a href="https://instagram.com/wheelhouse"><i class="fa fa-instagram"></i></a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="trust">
+      <h2>Why Riders Trust Wheelhouse</h2>
+      <img src="docs/kwame.jpg" alt="placeholder" width="300" height="200">
+      <p>Over 10 years serving Accra riders with rapid turnaround repairs.</p>
+    </section>
+
+    <section id="contact">
+      <h2>Book a Repair</h2>
+      <a href="https://wa.me/233200000000">Message Kwame on WhatsApp</a>
+
+      <form id="backupForm" action="/submit" method="POST">
+        <h3>Emergency Request (Backup)</h3>
+        <label for="riderName">Your Name</label>
+        <input type="text" id="riderName" name="name" required>
+
+        <label for="bikeIssue">Describe the Problem</label>
+        <textarea id="bikeIssue" name="issue" required></textarea>
+
+        <button type="submit">Send Service Request</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
