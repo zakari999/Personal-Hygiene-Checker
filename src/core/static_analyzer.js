@@ -317,13 +317,13 @@ export function runStaticChecks(repoBundle, rubricId = 'lab') {
   // ==========================================
   // 3. Markup & Accessibility Checks in Secondary Artifacts
   // ==========================================
-  const htmlArtifacts = artifacts.filter(a => a.name.endsWith('.html'));
+  const htmlArtifacts = artifacts.filter(a => a.name.endsWith('.html') || a.name.endsWith('.htm'));
   for (const htmlArt of htmlArtifacts) {
     const html = htmlArt.rawContent;
     const lines = html.split(/\r?\n/);
 
     // Viewport meta tag
-    if (isLab && !html.includes('viewport')) {
+    if (isLab && !/<meta\b[^>]*name=["']viewport["']/i.test(html)) {
       addFinding({
         category: 'Styling & responsive layout',
         citation: `artifact ${htmlArt.index}, line 1`,
@@ -333,10 +333,11 @@ export function runStaticChecks(repoBundle, rubricId = 'lab') {
       });
     }
 
-    // Icon-only links without accessible names
+    // Icon-only links without accessible names (supporting <i> and <svg>)
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (/<a\s+[^>]*href=["']([^"']*)["'][^>]*>\s*<i\b[^>]*><\/i>\s*<\/a>/i.test(line) && !line.includes('aria-label') && !line.includes('title')) {
+      const hasIcon = /<a\s+[^>]*href=["'][^"']*["'][^>]*>\s*(?:<i\b[^>]*>.*?<\/i>|<svg\b[^>]*>.*?<\/svg>)\s*<\/a>/i.test(line);
+      if (hasIcon && !line.includes('aria-label') && !line.includes('title')) {
         addFinding({
           category: isLab ? 'Accessibility' : 'correctness & robustness',
           citation: `artifact ${htmlArt.index}, line ${i + 1}`,
@@ -448,12 +449,12 @@ export function runStaticChecks(repoBundle, rubricId = 'lab') {
   // ==========================================
   // 4. CSS Responsive Layout Linters
   // ==========================================
-  const cssArtifacts = artifacts.filter(a => a.name.endsWith('.css'));
+  const cssArtifacts = artifacts.filter(a => a.name.endsWith('.css') || a.name.endsWith('.scss'));
   for (const cssArt of cssArtifacts) {
     const lines = cssArt.rawContent.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      // Flag fixed container pixel widths > 500px without max-width
+      // Flag fixed container pixel widths > 500px without max-width or responsive constraint
       if (/^\s*(width|min-width):\s*([5-9]\d{2}|\d{4,})px;/i.test(line)) {
         addFinding({
           category: isLab ? 'Styling & responsive layout' : 'correctness & robustness',
@@ -494,19 +495,38 @@ export function runStaticChecks(repoBundle, rubricId = 'lab') {
       });
     }
 
-    // Code inspection on JS/TS/Python source files
-    const codeArtifacts = artifacts.filter(a => /\.(js|ts|py)$/i.test(a.name));
+    // Code inspection on JS/TS/Python/Java source files
+    const codeArtifacts = artifacts.filter(a => /\.(js|mjs|cjs|ts|jsx|tsx|py|java|go|rs|php)$/i.test(a.name));
     for (const art of codeArtifacts) {
       const lines = art.rawContent.split(/\r?\n/);
 
-      // Check for hardcoded secrets or API keys
+      // 1. Structure & Architecture: Huge files without separation of concerns
+      if (lines.length > 500) {
+        addFinding({
+          category: 'structure & architecture',
+          citation: `artifact ${art.index}, line 1`,
+          issue: `source file contains ${lines.length} lines; consider splitting into smaller, focused modules with dedicated responsibilities.`,
+          severity: 1,
+          penaltyUnits: 1
+        });
+      }
+
+      // 2. Hardcoded secrets, API keys, or tokens
+      const secretPatterns = [
+        /(AIzaSy[0-9A-Za-z_-]{25,45})/,
+        /(ghp_[0-9A-Za-z]{30,45})/,
+        /(sk_live_[0-9a-zA-Z]{20,40})/,
+        /(AKIA[0-9A-Z]{16})/,
+        /(api|jwt|auth|app|secret|key|token|password)[_-]?(key|secret|token|credential|pwd)?\s*[:=]\s*["'][A-Za-z0-9_\-\.]{8,}["']/i
+      ];
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (/(api[_-]?key|jwt[_-]?secret|auth[_-]?token|password)\s*[:=]\s*["'][A-Za-z0-9_\-\.]{8,}["']/i.test(line)) {
+        if (secretPatterns.some(p => p.test(line)) && !line.includes('process.env')) {
           addFinding({
             category: 'security & data protection',
             citation: `artifact ${art.index}, line ${i + 1}`,
-            issue: 'potential hardcoded secret or token detected in source code; externalize credentials into environment variables.',
+            issue: 'potential hardcoded secret, token, or credential detected; externalize into environment variables.',
             severity: 3,
             penaltyUnits: 3
           });
@@ -514,14 +534,29 @@ export function runStaticChecks(repoBundle, rubricId = 'lab') {
         }
       }
 
-      // Check for empty catch blocks
+      // 3. Error Handling: Empty catch blocks (supports multi-line and comment-only blocks)
+      const emptyCatchRegex = /catch\s*(?:\([^)]*\))?\s*\{\s*(?:\/\/[^\r\n]*|\/\*[\s\S]*?\*\/|\s)*\}/g;
+      let catchMatch;
+      while ((catchMatch = emptyCatchRegex.exec(art.rawContent)) !== null) {
+        const lineNum = art.rawContent.slice(0, catchMatch.index).split(/\r?\n/).length;
+        addFinding({
+          category: 'error handling & observability',
+          citation: `artifact ${art.index}, line ${lineNum}`,
+          issue: 'empty catch block detected; swallowed exceptions hide runtime failures and prevent debugging.',
+          severity: 2,
+          penaltyUnits: 2
+        });
+        break;
+      }
+
+      // 4. Observability: Sensitive logging
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (/catch\s*\([^)]*\)\s*\{\s*\}/.test(line) || /catch\s*\{\s*\}/.test(line)) {
+        if (/console\.(log|info|debug)\(.*(password|secret|bearer|apiKey|authToken).*\)/i.test(line)) {
           addFinding({
             category: 'error handling & observability',
             citation: `artifact ${art.index}, line ${i + 1}`,
-            issue: 'empty catch block detected; swallowed exceptions hide runtime failures and prevent debugging.',
+            issue: 'logging statement may leak sensitive credentials (passwords, tokens) to standard output.',
             severity: 2,
             penaltyUnits: 2
           });
@@ -529,10 +564,10 @@ export function runStaticChecks(repoBundle, rubricId = 'lab') {
         }
       }
 
-      // Check for leftover debugger statements or raw console.log
+      // 5. Correctness & Robustness: Leftover debugger breakpoints (including with trailing comments)
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (/^\s*debugger\s*;?$/.test(line)) {
+        if (/^\s*debugger\s*;?(?:\s*\/\/.*)?$/.test(line)) {
           addFinding({
             category: 'correctness & robustness',
             citation: `artifact ${art.index}, line ${i + 1}`,
@@ -544,7 +579,7 @@ export function runStaticChecks(repoBundle, rubricId = 'lab') {
         }
       }
 
-      // Check for SELECT * in database queries
+      // 6. API & Database Hygiene: SELECT * queries
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (/SELECT\s+\*\s+FROM/i.test(line)) {
@@ -558,9 +593,26 @@ export function runStaticChecks(repoBundle, rubricId = 'lab') {
           break;
         }
       }
+
+      // 7. Config & Dependency Hygiene: Hardcoded local development URLs
+      if (!art.name.toLowerCase().includes('test') && !art.name.toLowerCase().includes('fixture')) {
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (/["']https?:\/\/localhost:\d+/i.test(line) && !line.includes('process.env')) {
+            addFinding({
+              category: 'configuration & dependency hygiene',
+              citation: `artifact ${art.index}, line ${i + 1}`,
+              issue: `hardcoded local URL (${line.trim().slice(0, 40)}) found in production module; externalize host configuration.`,
+              severity: 1,
+              penaltyUnits: 1
+            });
+            break;
+          }
+        }
+      }
     }
 
-    // Test suite check
+    // 8. Test Suite Check
     const hasTests = fileTree.some(f => /^test\b|^tests\b|__tests__|\.test\.|\.spec\./i.test(f));
     if (!hasTests) {
       addFinding({

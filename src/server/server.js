@@ -26,6 +26,15 @@ app.use(express.static(path.join(projectRoot, 'public')));
 // Serve test fixtures for local testing/sketches
 app.use('/fixtures', express.static(path.join(projectRoot, 'test/fixtures')));
 
+// API: Health Check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 // API: Get Rubrics
 app.get('/api/rubrics', (req, res) => {
   res.json({
@@ -44,11 +53,11 @@ app.get('/api/config', (req, res) => {
 
 // API: Save Config (.env)
 app.post('/api/config', (req, res) => {
-  const { apiKey, model } = req.body;
-  if (apiKey) {
+  const { apiKey, model } = req.body || {};
+  if (apiKey && typeof apiKey === 'string') {
     process.env.GEMINI_API_KEY = apiKey.trim();
   }
-  if (model) {
+  if (model && typeof model === 'string') {
     process.env.GEMINI_MODEL = model.trim();
   }
 
@@ -96,21 +105,24 @@ function serializeArtifacts(artifacts = []) {
 }
 
 // API: Run Repository Hygiene Check
-app.post('/api/check', async (req, res) => {
-  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.0-flash' } = req.body;
+app.post('/api/check', async (req, res, next) => {
+  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.0-flash' } = req.body || {};
 
-  if (!repoUrl) {
-    return res.status(400).json({ error: 'Repository URL is required.' });
+  if (!repoUrl || typeof repoUrl !== 'string' || !repoUrl.trim()) {
+    return res.status(400).json({ success: false, error: 'Repository URL or local path is required.' });
   }
 
+  const validRubrics = ['lab', 'swe'];
+  const safeRubricId = validRubrics.includes(rubricId) ? rubricId : 'lab';
+
   try {
-    const keyToUse = (apiKey && apiKey.trim()) || process.env.GEMINI_API_KEY || '';
-    const repoBundle = ingestRepository(repoUrl);
+    const keyToUse = (apiKey && typeof apiKey === 'string' && apiKey.trim()) || process.env.GEMINI_API_KEY || '';
+    const repoBundle = ingestRepository(repoUrl.trim());
 
     const result = await analyzeRepository(repoBundle, {
-      rubricId,
+      rubricId: safeRubricId,
       apiKey: keyToUse,
-      model
+      model: typeof model === 'string' ? model.trim() : 'gemini-2.0-flash'
     });
 
     res.json({
@@ -119,33 +131,33 @@ app.post('/api/check', async (req, res) => {
       commitCount: repoBundle.commits.length,
       latestCommit: repoBundle.commits[0] || null,
       artifacts: serializeArtifacts(repoBundle.artifacts),
+      commits: repoBundle.commits,
       result
     });
   } catch (error) {
-    console.error('Error in /api/check:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to inspect repository.'
-    });
+    next(error);
   }
 });
 
 // API: Re-check Repository (With Diff against previous run)
-app.post('/api/recheck', async (req, res) => {
-  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.0-flash', previousResult } = req.body;
+app.post('/api/recheck', async (req, res, next) => {
+  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.0-flash', previousResult } = req.body || {};
 
-  if (!repoUrl) {
-    return res.status(400).json({ error: 'Repository URL is required.' });
+  if (!repoUrl || typeof repoUrl !== 'string' || !repoUrl.trim()) {
+    return res.status(400).json({ success: false, error: 'Repository URL or local path is required.' });
   }
 
+  const validRubrics = ['lab', 'swe'];
+  const safeRubricId = validRubrics.includes(rubricId) ? rubricId : 'lab';
+
   try {
-    const keyToUse = (apiKey && apiKey.trim()) || process.env.GEMINI_API_KEY || '';
-    const repoBundle = ingestRepository(repoUrl);
+    const keyToUse = (apiKey && typeof apiKey === 'string' && apiKey.trim()) || process.env.GEMINI_API_KEY || '';
+    const repoBundle = ingestRepository(repoUrl.trim());
 
     const currentResult = await analyzeRepository(repoBundle, {
-      rubricId,
+      rubricId: safeRubricId,
       apiKey: keyToUse,
-      model
+      model: typeof model === 'string' ? model.trim() : 'gemini-2.0-flash'
     });
 
     const diff = previousResult ? compareHygieneRuns(previousResult, currentResult) : null;
@@ -156,20 +168,28 @@ app.post('/api/recheck', async (req, res) => {
       commitCount: repoBundle.commits.length,
       latestCommit: repoBundle.commits[0] || null,
       artifacts: serializeArtifacts(repoBundle.artifacts),
+      commits: repoBundle.commits,
       result: currentResult,
       diff
     });
   } catch (error) {
-    console.error('Error in /api/recheck:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to re-check repository.'
-    });
+    next(error);
   }
 });
 
-app.listen(PORT, () => {
+// Global Express Error Handler
+app.use((err, req, res, next) => {
+  console.error('Server Error:', err.message);
+  res.status(500).json({
+    success: false,
+    error: err.message || 'Internal server error occurred.'
+  });
+});
+
+const server = app.listen(PORT, () => {
   console.log(`\n==================================================`);
   console.log(`🚀 Hygiene Checker server running on http://localhost:${PORT}`);
   console.log(`==================================================\n`);
 });
+
+export { app, server };

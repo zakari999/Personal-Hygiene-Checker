@@ -24,6 +24,39 @@ const SWE_SUMMARIES = {
 };
 
 /**
+ * Normalizes category names for robust matching against AI output.
+ */
+function normalizeCategoryKey(name) {
+  return (name || '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+/**
+ * Extracts and cleans JSON from raw AI response text, safely stripping code fences.
+ */
+export function extractCleanJson(rawText) {
+  if (!rawText) throw new Error('Empty response from model.');
+  let cleaned = rawText.trim();
+
+  // Strip markdown code fences if present (e.g. ```json ... ```)
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  }
+
+  // If the model returned text with JSON inside curly braces
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && (firstBrace > 0 || lastBrace < cleaned.length - 1)) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+
+  return JSON.parse(cleaned);
+}
+
+/**
  * Performs deep repository hygiene audit using Google Gemini (or heuristic fallback).
  */
 export async function analyzeRepository(repoBundle, options = {}) {
@@ -194,10 +227,11 @@ EVALUATION RULES:
 }
 
 /**
- * Calls Gemini API with JSON response format.
+ * Calls Gemini API with JSON response format using secure header authentication.
  */
 async function callGeminiAPI(apiKey, model, contents) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const encodedModel = encodeURIComponent(model);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodedModel}:generateContent`;
 
   const payload = {
     contents,
@@ -209,7 +243,10 @@ async function callGeminiAPI(apiKey, model, contents) {
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey
+    },
     body: JSON.stringify(payload)
   });
 
@@ -224,7 +261,7 @@ async function callGeminiAPI(apiKey, model, contents) {
     throw new Error('Gemini API returned an empty response.');
   }
 
-  return JSON.parse(text);
+  return extractCleanJson(text);
 }
 
 /**
@@ -235,8 +272,15 @@ function parseAiAuditResponse(aiJson, rubric, staticFindings) {
   const rawCategories = aiJson.categories || [];
 
   for (const catConfig of rubric.categories) {
-    const found = rawCategories.find(c => c.category.toLowerCase().trim() === catConfig.name.toLowerCase().trim());
-    const staticForCat = staticFindings.filter(s => s.category.toLowerCase().trim() === catConfig.name.toLowerCase().trim());
+    const catKey = normalizeCategoryKey(catConfig.name);
+    const found = rawCategories.find(c => normalizeCategoryKey(c.category) === catKey);
+    const staticForCat = staticFindings.filter(s => normalizeCategoryKey(s.category) === catKey);
+
+    const defaultSummary = LAB_SUMMARIES[catConfig.name.toLowerCase()] ||
+      SWE_SUMMARIES[catConfig.name.toLowerCase()] ||
+      LAB_SUMMARIES[catConfig.id] ||
+      SWE_SUMMARIES[catConfig.id] ||
+      '';
 
     if (found) {
       const items = [...(found.items || [])];
@@ -252,7 +296,7 @@ function parseAiAuditResponse(aiJson, rubric, staticFindings) {
         category: catConfig.name,
         level: found.level || (items.length > 2 ? 2 : items.length > 0 ? 1 : 0),
         penaltyUnits: Math.max(found.penaltyUnits || items.length, items.length),
-        summary: found.summary || (LAB_SUMMARIES[catConfig.id] || SWE_SUMMARIES[catConfig.id] || ''),
+        summary: found.summary || defaultSummary,
         items
       });
     } else if (staticForCat.length > 0) {
@@ -260,7 +304,7 @@ function parseAiAuditResponse(aiJson, rubric, staticFindings) {
         category: catConfig.name,
         level: staticForCat.length > 2 ? 2 : 1,
         penaltyUnits: staticForCat.reduce((sum, s) => sum + (s.penaltyUnits || 1), 0),
-        summary: LAB_SUMMARIES[catConfig.name.toLowerCase()] || SWE_SUMMARIES[catConfig.name.toLowerCase()] || 'Automated verification identified issues in this area.',
+        summary: defaultSummary || 'Automated verification identified issues in this area.',
         items: staticForCat.map(s => ({ citation: s.citation, issue: s.issue }))
       });
     } else {
@@ -286,7 +330,8 @@ function generateHeuristicAuditResult(repoBundle, rubric, staticFindings) {
 
   for (const catConfig of rubric.categories) {
     const catNameLower = catConfig.name.toLowerCase().trim();
-    const staticForCat = staticFindings.filter(s => s.category.toLowerCase().trim() === catNameLower);
+    const catKey = normalizeCategoryKey(catConfig.name);
+    const staticForCat = staticFindings.filter(s => normalizeCategoryKey(s.category) === catKey);
 
     if (staticForCat.length > 0) {
       let level = 1;

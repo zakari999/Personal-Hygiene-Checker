@@ -1,6 +1,26 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+
+const GIT_TIMEOUT_MS = 60000; // 60 seconds max for network git operations
+const GIT_ENV = {
+  ...process.env,
+  GIT_TERMINAL_PROMPT: '0', // Never hang waiting for interactive terminal credentials
+  GIT_ASKPASS: 'echo'
+};
+
+/**
+ * Safely executes git commands using execFileSync without shell invocation.
+ */
+function safeGit(args, options = {}) {
+  return execFileSync('git', args, {
+    stdio: 'pipe',
+    timeout: GIT_TIMEOUT_MS,
+    env: GIT_ENV,
+    ...options
+  }).toString().trim();
+}
 
 /**
  * Normalizes a repo input string into a standard git clone URL or local directory.
@@ -11,43 +31,81 @@ export function normalizeRepoInput(input) {
     throw new Error('Repository URL or local directory path is required.');
   }
 
-  // Check if it's an existing local directory
-  if (fs.existsSync(trimmed) && fs.statSync(trimmed).isDirectory()) {
-    return { isLocal: true, path: path.resolve(trimmed), name: path.basename(trimmed) };
+  // Expand home directory if input begins with ~
+  let expandedPath = trimmed;
+  if (expandedPath.startsWith('~/') || expandedPath === '~') {
+    expandedPath = path.join(os.homedir(), expandedPath.slice(1));
   }
 
-  // GitHub URL parsing
+  // Check if it's an existing local directory
+  if (fs.existsSync(expandedPath)) {
+    try {
+      const stat = fs.statSync(expandedPath);
+      if (stat.isDirectory()) {
+        const resolved = path.resolve(expandedPath);
+        return { isLocal: true, path: resolved, name: path.basename(resolved) };
+      }
+    } catch {
+      // Continue to URL parsing if not a readable directory
+    }
+  }
+
+  // GitHub & Git URL parsing
   let cleanUrl = trimmed;
-  // Handle tree/branch URLs: https://github.com/owner/repo/tree/main -> https://github.com/owner/repo
-  const treeMatch = cleanUrl.match(/^(https?:\/\/github\.com\/[^\/]+\/[^\/]+)\/tree\/([^\/]+)/i);
+
+  // Handle tree/branch URLs: https://github.com/owner/repo/tree/main -> https://github.com/owner/repo with branch
+  const treeMatch = cleanUrl.match(/^(https?:\/\/github\.com\/[^\/]+\/[^\/]+)\/tree\/([^\/\s\?#]+)/i);
   let branch = null;
   if (treeMatch) {
     cleanUrl = treeMatch[1];
     branch = treeMatch[2];
   }
 
-  // Strip trailing slashes and .git if present
-  const gitUrlMatch = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/i);
-  if (!gitUrlMatch) {
-    throw new Error(`Invalid GitHub repository URL: "${input}". Expected format: https://github.com/owner/repo`);
+  // Support both HTTPS (https://github.com/owner/repo) and SSH (git@github.com:owner/repo.git)
+  const ghMatch = cleanUrl.match(/github\.com[:\/]([a-zA-Z0-9_\-\.]+)\/([a-zA-Z0-9_\-\.]+?)(\.git)?(\/|$)/i);
+  if (ghMatch) {
+    const owner = ghMatch[1];
+    const repo = ghMatch[2].replace(/\.git$/i, '');
+
+    // Validate sanitized owner and repo names
+    if (!/^[a-zA-Z0-9_\-\.]+$/.test(owner) || !/^[a-zA-Z0-9_\-\.]+$/.test(repo)) {
+      throw new Error(`Invalid GitHub repository identifiers in "${input}".`);
+    }
+
+    if (branch && !/^[a-zA-Z0-9_\-\.\/]+$/.test(branch)) {
+      throw new Error(`Invalid git branch name "${branch}".`);
+    }
+
+    return {
+      isLocal: false,
+      owner,
+      repo,
+      name: `${owner}/${repo}`,
+      cloneUrl: `https://github.com/${owner}/${repo}.git`,
+      branch
+    };
   }
 
-  const owner = gitUrlMatch[1];
-  const repo = gitUrlMatch[2];
-  const cloneUrl = `https://github.com/${owner}/${repo}.git`;
+  // Generic git URL fallback (GitLab, Bitbucket, self-hosted)
+  const genericMatch = cleanUrl.match(/^(https?:\/\/[^\/]+\/([a-zA-Z0-9_\-\.]+)\/([a-zA-Z0-9_\-\.]+?)(\.git)?)$/i);
+  if (genericMatch) {
+    const owner = genericMatch[2];
+    const repo = genericMatch[3].replace(/\.git$/i, '');
+    return {
+      isLocal: false,
+      owner,
+      repo,
+      name: `${owner}/${repo}`,
+      cloneUrl: cleanUrl.endsWith('.git') ? cleanUrl : `${cleanUrl}.git`,
+      branch
+    };
+  }
 
-  return {
-    isLocal: false,
-    owner,
-    repo,
-    name: `${owner}/${repo}`,
-    cloneUrl,
-    branch
-  };
+  throw new Error(`Invalid repository URL or path: "${input}". Expected a valid local folder path or git URL (e.g. https://github.com/owner/repo).`);
 }
 
 /**
- * Clones or pulls a GitHub repository into a local cache directory.
+ * Clones or pulls a GitHub repository into a local cache directory using secure array args.
  */
 export function syncRepository(target, cacheBaseDir = path.resolve(process.cwd(), '.repos_cache')) {
   if (target.isLocal) {
@@ -58,60 +116,69 @@ export function syncRepository(target, cacheBaseDir = path.resolve(process.cwd()
     fs.mkdirSync(cacheBaseDir, { recursive: true });
   }
 
-  const repoFolderName = `${target.owner}__${target.repo}`;
+  const safeOwner = target.owner.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+  const safeRepo = target.repo.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+  const repoFolderName = `${safeOwner}__${safeRepo}`;
   const repoPath = path.join(cacheBaseDir, repoFolderName);
 
   if (fs.existsSync(repoPath) && fs.existsSync(path.join(repoPath, '.git'))) {
     try {
-      // Pull latest changes
-      execSync('git fetch --all --prune', { cwd: repoPath, stdio: 'pipe' });
-      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, stdio: 'pipe' }).toString().trim();
+      safeGit(['fetch', '--all', '--prune'], { cwd: repoPath });
+      const currentBranch = safeGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoPath });
       const targetBranch = target.branch || currentBranch || 'main';
-      execSync(`git checkout ${targetBranch}`, { cwd: repoPath, stdio: 'pipe' });
-      execSync(`git pull origin ${targetBranch} --ff-only`, { cwd: repoPath, stdio: 'pipe' });
+
+      safeGit(['checkout', targetBranch], { cwd: repoPath });
+      safeGit(['pull', 'origin', targetBranch, '--ff-only'], { cwd: repoPath });
       return repoPath;
     } catch {
-      // If pull fails (e.g. diverged), remove and fresh clone
+      // If pull fails (e.g. diverged history), cleanly remove and re-clone
       fs.rmSync(repoPath, { recursive: true, force: true });
     }
   }
 
-  // Fresh shallow clone with commit history
-  const branchFlag = target.branch ? `-b ${target.branch}` : '';
-  const cmd = `git clone --depth 100 ${branchFlag} "${target.cloneUrl}" "${repoPath}"`;
-  execSync(cmd, { stdio: 'pipe' });
+  // Fresh shallow clone
+  const cloneArgs = ['clone', '--depth', '100'];
+  if (target.branch) {
+    cloneArgs.push('-b', target.branch);
+  }
+  cloneArgs.push(target.cloneUrl, repoPath);
+
+  try {
+    safeGit(cloneArgs);
+  } catch (err) {
+    throw new Error(`Failed to clone git repository (${target.cloneUrl}): ${err.message}`);
+  }
 
   return repoPath;
 }
 
 /**
- * Extracts and formats commit history from git.
+ * Extracts and formats commit history from git safely.
  */
 export function extractCommitHistory(repoPath) {
   try {
     // Check if repoPath has its own .git folder
     const gitDir = path.join(repoPath, '.git');
     if (!fs.existsSync(gitDir)) {
-      // Check if a fixture commits.json or commits.log exists
+      // Check if a fixture commits.json exists
       const fixtureCommits = path.join(repoPath, 'commits.json');
       if (fs.existsSync(fixtureCommits)) {
         return JSON.parse(fs.readFileSync(fixtureCommits, 'utf-8'));
       }
       // If repoPath is not its own git root, do not leak parent git log
       try {
-        const topLevel = execSync('git rev-parse --show-toplevel', { cwd: repoPath, stdio: 'pipe' }).toString().trim();
+        const topLevel = safeGit(['rev-parse', '--show-toplevel'], { cwd: repoPath });
         if (path.resolve(topLevel) !== path.resolve(repoPath)) {
-          return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial submission export' }];
+          return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial submission export (no git repo)' }];
         }
       } catch {
-        return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial submission export' }];
+        return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial submission export (no git repo)' }];
       }
     }
 
-    const rawLog = execSync('git log -n 50 --pretty=format:"%h%x09%ad%x09%an%x09%s" --date=short', {
-      cwd: repoPath,
-      stdio: 'pipe'
-    }).toString().trim();
+    const rawLog = safeGit(['log', '-n', '50', '--pretty=format:%h%x09%ad%x09%an%x09%s', '--date=short'], {
+      cwd: repoPath
+    });
 
     if (!rawLog) return [];
 
@@ -125,7 +192,7 @@ export function extractCommitHistory(repoPath) {
         subject: parts[3] || ''
       };
     });
-  } catch (err) {
+  } catch {
     return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial commit (shallow/exported)' }];
   }
 }
@@ -137,7 +204,6 @@ export function checkMarkdownTruncation(content) {
   if (!content) return { isTruncated: true, details: 'File is empty.' };
 
   const lines = content.split(/\r?\n/);
-  // Find last non-empty line
   let lastIdx = lines.length - 1;
   while (lastIdx >= 0 && lines[lastIdx].trim() === '') {
     lastIdx--;
@@ -148,7 +214,6 @@ export function checkMarkdownTruncation(content) {
   const lastLine = lines[lastIdx].trim();
   const lineNumber = lastIdx + 1;
 
-  // Patterns indicating truncation:
   // 1. Unclosed code block fences (e.g. ``` without closing ```)
   const codeFences = (content.match(/^```/gm) || []).length;
   if (codeFences % 2 !== 0) {
@@ -162,9 +227,8 @@ export function checkMarkdownTruncation(content) {
 
   // 2. Ends mid-word or open quotation e.g. "Proof sits in "About Whe
   const danglingWordPattern = /\b(the|and|or|with|in|to|of|about|for|from|by|that|this|which|is|are|whe|th|wh)$/i;
-  const oddQuotes = (lastLine.match(/"/g) || []).length % 2 !== 0;
-
-  if (oddQuotes) {
+  const quoteCount = (lastLine.match(/"/g) || []).length;
+  if (quoteCount % 2 !== 0) {
     return {
       isTruncated: true,
       lineNumber,
@@ -203,13 +267,13 @@ export function checkMarkdownTruncation(content) {
     };
   }
 
-  // 6. Trailing dangling dash or unclosed parenthesis at end of sentence
-  if (/—$|(?<!\([^\)]*)\($/.test(lastLine)) {
+  // 6. Trailing dangling dash, trailing ellipsis, or unclosed parenthesis at end of sentence
+  if (/—$|(?<!\([^\)]*)\($|\.{3,}$|\\$/.test(lastLine)) {
     return {
       isTruncated: true,
       lineNumber,
       lastLine,
-      details: `Cuts off on trailing punctuation: "${lastLine}"`
+      details: `Cuts off on trailing punctuation or ellipsis: "${lastLine}"`
     };
   }
 
@@ -220,24 +284,47 @@ export function checkMarkdownTruncation(content) {
  * Recursively scans directory for files, ignoring .git, node_modules, etc.
  */
 export function scanDirectory(dir, baseDir = dir) {
-  const ignoreList = new Set(['.git', 'node_modules', '.repos_cache', 'dist', 'build', '.next', '.cache']);
+  const ignoreList = new Set(['.git', 'node_modules', '.repos_cache', 'dist', 'build', '.next', '.cache', '.turbo', 'coverage']);
   let results = [];
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (ignoreList.has(entry.name)) continue;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (ignoreList.has(entry.name)) continue;
 
-    const fullPath = path.join(dir, entry.name);
-    const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+      const fullPath = path.join(dir, entry.name);
+      const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
 
-    if (entry.isDirectory()) {
-      results = results.concat(scanDirectory(fullPath, baseDir));
-    } else {
-      results.push({ fullPath, relPath });
+      if (entry.isDirectory()) {
+        results = results.concat(scanDirectory(fullPath, baseDir));
+      } else {
+        results.push({ fullPath, relPath });
+      }
     }
+  } catch (err) {
+    console.warn(`Warning: Could not read directory "${dir}":`, err.message);
   }
 
   return results;
+}
+
+/**
+ * Checks if a buffer is binary (contains null bytes in first 1024 bytes).
+ */
+function isBinaryFile(filePath) {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(1024);
+    const bytesRead = fs.readSync(fd, buffer, 0, 1024, 0);
+    fs.closeSync(fd);
+
+    for (let i = 0; i < bytesRead; i++) {
+      if (buffer[i] === 0) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -250,7 +337,7 @@ export function ingestRepository(inputUrlOrPath) {
   const allFiles = scanDirectory(repoPath);
 
   // Identify artifact 1 (Primary README / Report)
-  const readmeCandidates = ['README.md', 'readme.md', 'README', 'REPORT.md', 'report.md', 'index.md'];
+  const readmeCandidates = ['README.md', 'readme.md', 'README', 'REPORT.md', 'report.md', 'index.md', 'submission.md'];
   let primaryReadmePath = null;
   for (const candidate of readmeCandidates) {
     const found = allFiles.find(f => f.relPath.toLowerCase() === candidate.toLowerCase());
@@ -264,26 +351,37 @@ export function ingestRepository(inputUrlOrPath) {
   let artifactIndex = 1;
 
   if (primaryReadmePath) {
-    const raw = fs.readFileSync(primaryReadmePath.fullPath, 'utf-8');
-    const lines = raw.split(/\r?\n/);
-    const numbered = lines.map((l, i) => `line ${i + 1}: ${l}`).join('\n');
-    const truncation = checkMarkdownTruncation(raw);
+    try {
+      const raw = fs.readFileSync(primaryReadmePath.fullPath, 'utf-8');
+      const lines = raw.split(/\r?\n/);
+      const numbered = lines.map((l, i) => `line ${i + 1}: ${l}`).join('\n');
+      const truncation = checkMarkdownTruncation(raw);
 
-    artifacts.push({
-      index: artifactIndex++,
-      name: primaryReadmePath.relPath,
-      isPrimaryReport: true,
-      lineCount: lines.length,
-      rawContent: raw,
-      contentNumbered: numbered,
-      isTruncated: truncation.isTruncated,
-      truncation
-    });
+      artifacts.push({
+        index: artifactIndex++,
+        name: primaryReadmePath.relPath,
+        isPrimaryReport: true,
+        lineCount: lines.length,
+        rawContent: raw,
+        contentNumbered: numbered,
+        isTruncated: truncation.isTruncated,
+        truncation
+      });
+    } catch (err) {
+      console.warn(`Could not read primary report "${primaryReadmePath.relPath}":`, err.message);
+    }
   }
 
-  // Identify secondary source files (HTML, CSS, JS, etc.)
-  const priorityExtensions = ['.html', '.css', '.js', '.ts', '.py'];
-  const excludedFiles = new Set(['commits.json', 'package-lock.json', 'package.json']);
+  // Identify secondary source files (HTML, CSS, JS, TS, Python, Java, etc.)
+  const priorityExtensions = [
+    '.html', '.htm', '.css', '.scss', '.sass',
+    '.js', '.mjs', '.cjs', '.jsx',
+    '.ts', '.tsx',
+    '.py', '.java', '.go', '.rs', '.php', '.sql',
+    '.json', '.yml', '.yaml'
+  ];
+  const excludedFiles = new Set(['commits.json', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml']);
+
   const secondaryFiles = allFiles
     .filter(f => !primaryReadmePath || f.relPath !== primaryReadmePath.relPath)
     .filter(f => !excludedFiles.has(path.basename(f.relPath)))
@@ -291,20 +389,19 @@ export function ingestRepository(inputUrlOrPath) {
       const ext = path.extname(f.relPath).toLowerCase();
       return priorityExtensions.includes(ext);
     })
-    // Prioritize root-level files or core src
     .sort((a, b) => {
       const depthA = a.relPath.split('/').length;
       const depthB = b.relPath.split('/').length;
       if (depthA !== depthB) return depthA - depthB;
       return a.relPath.localeCompare(b.relPath);
     })
-    .slice(0, 10); // inspect up to 10 key files
+    .slice(0, 15); // inspect up to 15 key files
 
   for (const file of secondaryFiles) {
     try {
       const stat = fs.statSync(file.fullPath);
-      // Skip very large files (> 300KB)
-      if (stat.size > 300 * 1024) continue;
+      // Skip large files (> 300KB) and binary files
+      if (stat.size > 300 * 1024 || isBinaryFile(file.fullPath)) continue;
 
       const raw = fs.readFileSync(file.fullPath, 'utf-8');
       const lines = raw.split(/\r?\n/);
@@ -331,7 +428,6 @@ export function ingestRepository(inputUrlOrPath) {
   for (const img of imageFiles) {
     try {
       const stat = fs.statSync(img.fullPath);
-      // Encode images under 2MB for vision models
       let base64 = null;
       let mimeType = 'image/png';
       if (stat.size <= 2 * 1024 * 1024) {

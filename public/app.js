@@ -2,10 +2,19 @@
 
 let currentResult = null;
 let currentArtifacts = [];
+let currentCommits = [];
 let previousResult = null;
 let checklistMode = true;
 let currentFilter = 'all';
 const checkedItems = new Set();
+
+// Load persisted checked items from localStorage
+try {
+  const savedChecks = JSON.parse(localStorage.getItem('hygiene_checker_checked_items') || '[]');
+  savedChecks.forEach(k => checkedItems.add(k));
+} catch {
+  // ignore storage errors
+}
 
 // Elements
 const btnOpenConfig = document.getElementById('btnOpenConfig');
@@ -182,6 +191,7 @@ async function runCheck(isRecheck = false) {
     }
     currentResult = data.result;
     currentArtifacts = data.artifacts || [];
+    currentCommits = data.commits || [];
 
     renderResults(data, isRecheck ? data.diff : null);
   } catch (err) {
@@ -248,7 +258,7 @@ function renderResults(data, diff) {
     return;
   }
 
-  filteredCategories.forEach((cat, catIdx) => {
+  filteredCategories.forEach((cat) => {
     const card = document.createElement('div');
     card.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-lg';
 
@@ -274,7 +284,7 @@ function renderResults(data, diff) {
                 class="item-checkbox mt-1 w-4 h-4 rounded border-slate-700 text-rose-600 focus:ring-rose-500 focus:ring-offset-slate-900 cursor-pointer">
             ` : ''}
             <div class="text-xs leading-relaxed text-slate-300 ${isChecked ? 'line-through opacity-50' : ''}">
-              <button class="citation-btn font-mono-code font-semibold text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 px-1.5 py-0.5 rounded border border-rose-500/20 text-left transition-colors" data-citation="${escapeHtml(item.citation)}">
+              <button class="citation-btn font-mono-code font-semibold text-rose-300 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 px-1.5 py-0.5 rounded border border-rose-500/20 text-left transition-colors cursor-pointer" data-citation="${escapeHtml(item.citation)}">
                 ${escapeHtml(item.citation)}
               </button>
               <span class="text-slate-500 font-bold mx-1">—</span>
@@ -319,6 +329,11 @@ function renderResults(data, diff) {
       } else {
         checkedItems.delete(key);
       }
+      try {
+        localStorage.setItem('hygiene_checker_checked_items', JSON.stringify([...checkedItems]));
+      } catch {
+        // ignore
+      }
       const textContainer = e.target.nextElementSibling;
       if (textContainer) {
         if (e.target.checked) {
@@ -343,7 +358,40 @@ function renderResults(data, diff) {
 function openCitationViewer(citation) {
   if (!citation) return;
 
-  // Citation format: "artifact <N>, line <L>" or "artifact <N>, commits"
+  const isCommitsCitation = citation.toLowerCase().includes('commits');
+
+  if (isCommitsCitation) {
+    codeViewerTitle.textContent = `Git Commit History Inspector`;
+    codeViewerSubtitle.textContent = `Inspecting ${currentCommits.length} commits for conventional formatting, scopes, and micro-edits`;
+    codeViewerFooter.textContent = `Citation: ${citation} across repository git log`;
+
+    if (!currentCommits || currentCommits.length === 0) {
+      codeViewerContent.innerHTML = `<div class="text-slate-500 italic p-4">No commit history available.</div>`;
+    } else {
+      let html = '<div class="space-y-1.5">';
+      currentCommits.forEach((c) => {
+        const isVague = /^(added|adding|updated|updating|changed|description|edit|fix|wip|temp)\b/i.test(c.subject) && !c.subject.includes(':');
+        const isDuplicateEdit = /readme\s*(edit|diagnosis)/i.test(c.subject);
+
+        html += `
+          <div class="flex items-center gap-3 p-2 rounded ${isDuplicateEdit || isVague ? 'bg-rose-950/40 border border-rose-800/50' : 'bg-slate-900/60 border border-slate-800/60'}">
+            <span class="font-mono-code text-rose-400 font-semibold px-2 py-0.5 rounded bg-slate-950 text-xs">${escapeHtml(c.hash)}</span>
+            <span class="text-slate-500 text-xs">${escapeHtml(c.date)}</span>
+            <span class="text-slate-300 font-medium text-xs flex-1 truncate">${escapeHtml(c.subject)}</span>
+            ${isDuplicateEdit ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Squash Candidate</span>' : ''}
+            ${isVague ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">Vague Subject</span>' : ''}
+          </div>
+        `;
+      });
+      html += '</div>';
+      codeViewerContent.innerHTML = html;
+    }
+
+    modalCodeViewer.classList.remove('hidden');
+    return;
+  }
+
+  // Citation format: "artifact <N>, line <L>"
   const artMatch = citation.match(/artifact\s*(\d+)/i);
   const lineMatch = citation.match(/line\s*(\d+)/i);
 
@@ -389,11 +437,15 @@ function openCitationViewer(citation) {
 // Copy full raw report matching platform output
 function copyReportToClipboard() {
   if (!currentResult || !currentResult.reportText) return;
-  navigator.clipboard.writeText(currentResult.reportText).then(() => {
-    alert('Platform report copied to clipboard!');
-  }).catch(() => {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(currentResult.reportText).then(() => {
+      alert('Platform report copied to clipboard!');
+    }).catch(() => {
+      prompt('Copy the report below:', currentResult.reportText);
+    });
+  } else {
     prompt('Copy the report below:', currentResult.reportText);
-  });
+  }
 }
 
 // Download Report as Markdown (.md)

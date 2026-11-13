@@ -1,5 +1,16 @@
 import { QUANTUM_UNIT, RUBRICS } from './rubrics.js';
 
+function normalizeCategory(str = '') {
+  return str.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]/g, '').trim();
+}
+
+function getItemKey(categoryName, item) {
+  const normCat = normalizeCategory(categoryName);
+  const citation = (item.citation || '').toLowerCase().trim();
+  const issueSnippet = (item.issue || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
+  return `${normCat}::${citation}::${issueSnippet}`;
+}
+
 /**
  * Computes exact sloppiness penalties, levels, and generates the standardized report.
  */
@@ -9,10 +20,12 @@ export function calculateHygieneScore(categoryEvaluations, rubricId = 'lab') {
   const categoriesReport = [];
 
   for (const catConfig of rubric.categories) {
-    const evalData = categoryEvaluations.find(c => 
-      c.category.toLowerCase().trim() === catConfig.name.toLowerCase().trim() ||
-      (catConfig.id && c.categoryId === catConfig.id)
-    ) || {
+    const configKey = normalizeCategory(catConfig.name);
+
+    const evalData = categoryEvaluations.find(c => {
+      const evalKey = normalizeCategory(c.category);
+      return evalKey === configKey || (catConfig.id && c.categoryId === catConfig.id);
+    }) || {
       category: catConfig.name,
       level: 0,
       penaltyUnits: 0,
@@ -22,7 +35,7 @@ export function calculateHygieneScore(categoryEvaluations, rubricId = 'lab') {
 
     const penaltyUnits = Math.max(0, evalData.penaltyUnits || (evalData.items ? evalData.items.length : 0));
     totalPenaltyUnits += penaltyUnits;
-    
+
     // Platform truncates/floors category deductions to 2 decimal places
     const deduction = penaltyUnits > 0 ? Math.floor(penaltyUnits * QUANTUM_UNIT * 100) / 100 : 0.00;
 
@@ -45,7 +58,7 @@ export function calculateHygieneScore(categoryEvaluations, rubricId = 'lab') {
   }
 
   // Total penalty is calculated from total unrounded penalty units
-  const totalPenalty = totalPenaltyUnits > 0 
+  const totalPenalty = totalPenaltyUnits > 0
     ? Number((Math.round(totalPenaltyUnits * QUANTUM_UNIT * 100) / 100).toFixed(2))
     : 0.00;
 
@@ -59,9 +72,6 @@ export function calculateHygieneScore(categoryEvaluations, rubricId = 'lab') {
 
   for (const cat of categoriesReport) {
     if (cat.items.length === 0 && cat.level === 0) {
-      // Optional: keep clean passing categories or omit if module platform only reports penalties
-      // The module platform only reports categories with penalties or reports all.
-      // We list penalized ones, and if none, report 0.00 clean.
       continue;
     }
 
@@ -108,19 +118,42 @@ export function compareHygieneRuns(previousResult, currentResult) {
   const currPenalty = currentResult.totalPenalty || 0;
   const improvement = Number((prevPenalty - currPenalty).toFixed(2));
 
-  const prevItems = [];
+  const prevItemMap = new Map();
   (previousResult.categories || []).forEach(cat => {
-    (cat.items || []).forEach(it => prevItems.push(`${cat.category}: ${it.citation} — ${it.issue}`));
+    (cat.items || []).forEach(it => {
+      const key = getItemKey(cat.category, it);
+      prevItemMap.set(key, { category: cat.category, item: it });
+    });
   });
 
-  const currItems = [];
+  const currItemMap = new Map();
   (currentResult.categories || []).forEach(cat => {
-    (cat.items || []).forEach(it => currItems.push(`${cat.category}: ${it.citation} — ${it.issue}`));
+    (cat.items || []).forEach(it => {
+      const key = getItemKey(cat.category, it);
+      currItemMap.set(key, { category: cat.category, item: it });
+    });
   });
 
-  const resolved = prevItems.filter(p => !currItems.some(c => c.slice(0, 35) === p.slice(0, 35)));
-  const remaining = currItems.filter(c => prevItems.some(p => p.slice(0, 35) === c.slice(0, 35)));
-  const newlyIntroduced = currItems.filter(c => !prevItems.some(p => p.slice(0, 35) === c.slice(0, 35)));
+  const resolved = [];
+  for (const [key, val] of prevItemMap.entries()) {
+    if (!currItemMap.has(key)) {
+      resolved.push(`${val.category}: ${val.item.citation} — ${val.item.issue}`);
+    }
+  }
+
+  const remaining = [];
+  for (const [key, val] of currItemMap.entries()) {
+    if (prevItemMap.has(key)) {
+      remaining.push(`${val.category}: ${val.item.citation} — ${val.item.issue}`);
+    }
+  }
+
+  const newlyIntroduced = [];
+  for (const [key, val] of currItemMap.entries()) {
+    if (!prevItemMap.has(key)) {
+      newlyIntroduced.push(`${val.category}: ${val.item.citation} — ${val.item.issue}`);
+    }
+  }
 
   return {
     previousPenalty: prevPenalty,
