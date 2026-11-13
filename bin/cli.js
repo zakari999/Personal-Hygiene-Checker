@@ -1,0 +1,107 @@
+#!/usr/bin/env node
+
+import path from 'node:path';
+import dotenv from 'dotenv';
+import { ingestRepository } from '../src/core/ingestor.js';
+import { analyzeRepository } from '../src/core/ai_analyzer.js';
+import { RUBRICS } from '../src/core/rubrics.js';
+
+// Load environment variables from .env if present
+dotenv.config();
+
+const args = process.argv.slice(2);
+
+function showHelp() {
+  console.log(`
+Project Hygiene Checker — CLI
+----------------------------------------
+Usage:
+  node bin/cli.js <repo-url-or-path> [options]
+
+Options:
+  --rubric <lab|swe>       Choose rubric: 'lab' (Module Lab & Design, default) or 'swe' (Software Engineering table.tsv)
+  --key <apiKey>           Google Gemini API key (or set GEMINI_API_KEY in .env)
+  --model <modelName>      Model to use (default: gemini-2.5-flash)
+  --json                   Output results as JSON
+  --help                   Show this help message
+
+Examples:
+  node bin/cli.js https://github.com/facebook/react
+  node bin/cli.js ./my-local-project --rubric lab
+  node bin/cli.js https://github.com/user/my-lab-submission --key AIzaSy...
+`);
+}
+
+async function main() {
+  if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
+    showHelp();
+    process.exit(0);
+  }
+
+  let repoInput = null;
+  let rubricId = 'lab';
+  let apiKey = process.env.GEMINI_API_KEY || '';
+  let model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  let jsonOutput = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--rubric' && args[i + 1]) {
+      rubricId = args[++i];
+    } else if (arg === '--key' && args[i + 1]) {
+      apiKey = args[++i];
+    } else if (arg === '--model' && args[i + 1]) {
+      model = args[++i];
+    } else if (arg === '--json') {
+      jsonOutput = true;
+    } else if (!arg.startsWith('-') && !repoInput) {
+      repoInput = arg;
+    }
+  }
+
+  if (!repoInput) {
+    console.error('Error: Repository URL or local folder path is required.');
+    process.exit(1);
+  }
+
+  if (!jsonOutput) {
+    console.log(`\n🔍 Analyzing repository: ${repoInput}`);
+    console.log(`📋 Rubric: ${RUBRICS[rubricId] ? RUBRICS[rubricId].name : rubricId}`);
+    if (apiKey) {
+      console.log(`🤖 Model: ${model} (Gemini AI Powered)`);
+    } else {
+      console.log(`⚡ Mode: Static heuristic analysis (Set GEMINI_API_KEY to enable deep AI inspection)`);
+    }
+    console.log('------------------------------------------------------------\n');
+  }
+
+  try {
+    const repoBundle = ingestRepository(repoInput);
+
+    const result = await analyzeRepository(repoBundle, {
+      rubricId,
+      apiKey,
+      model,
+      onProgress: (p) => {
+        if (!jsonOutput) {
+          console.log(`[${p.step}] ${p.message}`);
+        }
+      }
+    });
+
+    if (jsonOutput) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log('\n============================================================');
+      console.log('                 HYGIENE CHECK REPORT                       ');
+      console.log('============================================================\n');
+      console.log(result.reportText);
+      console.log('\n============================================================\n');
+    }
+  } catch (error) {
+    console.error(`\n❌ Error during hygiene check: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+main();

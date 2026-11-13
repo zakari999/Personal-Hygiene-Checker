@@ -1,0 +1,11 @@
+name	description
+readability & naming	Clear, idiomatic code with meaningful, convention-following names and consistent formatting; no cryptic names, convoluted logic, or mixed styles.
+structure & architecture	Modular structure with respected layer boundaries and separation of concerns; no god-classes, circular dependencies, or business logic in controllers.
+correctness & robustness	Accurate code with edge cases and resources handled; no dead code, leftover debug output, leaked connections, or race conditions.
+error handling & observability	Errors handled meaningfully and logged appropriately; no empty catch blocks, swallowed exceptions, System.out debugging, or sensitive data in logs.
+security & data protection	Inputs validated, access controlled, and credentials externalized; no injection risks, missing authorization checks, or hardcoded secrets and tokens.
+configuration & dependency hygiene	Externalized config and lean, declared dependencies; no hardcoded URLs or magic values, unused imports, or committed build artifacts.
+API & database hygiene	Well-formed endpoints and sound data access; correct status codes, proper keys and indexes; no leaked internal fields, N+1 queries, or SELECT * misuse. (Where an API or datastore is involved.)
+test hygiene	Meaningful, passing, isolated tests covering key behavior; no skipped, commented-out, flaky, or assertion-free tests. (Where tests are expected.)
+build, delivery & version control	Reproducible build, green CI, and clean history; no failing builds, manual-only setup, or WIP/"fix" commit noise and committed artifacts. (Skip commit checks if no repository.)
+documentation & completeness	Clear README, setup steps, and a complete runnable submission; no missing prerequisites, broken instructions, unresolved references, or missing files.

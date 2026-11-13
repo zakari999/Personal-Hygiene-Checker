@@ -1,0 +1,30 @@
+{
+  "name": "module-repo-hygiene-checker",
+  "version": "1.0.0",
+  "description": "Deep GitHub repository hygiene checker for module lab submission reports",
+  "main": "src/server/server.js",
+  "type": "module",
+  "bin": {
+    "hygiene-check": "bin/cli.js"
+  },
+  "scripts": {
+    "start": "node src/server/server.js",
+    "check": "node bin/cli.js",
+    "test": "node test/verify_sample.js"
+  },
+  "keywords": [
+    "hygiene-checker",
+    "github",
+    "code-review",
+    "module-lab",
+    "gemini",
+    "rubric-evaluation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
