@@ -112,7 +112,10 @@ This runs 4 comprehensive automated test suites:
 │   ├── core/
 │   │   ├── rubrics.js          # Rubric A (Lab) and Rubric B (SWE 10-criteria from table.tsv)
 │   │   ├── ingestor.js         # Secure git sync, commit parser, line-numbered artifacts, truncation
-│   │   ├── static_analyzer.js  # Heuristic linters (A11y, responsive, secrets, multi-line AST checks)
+│   │   ├── static_analyzer.js  # Coordinator for deterministic static scanners
+│   │   ├── linters/
+│   │   │   ├── lab_linter.js   # Lab-specific linters (A11y, responsive CSS, forms, design fidelity)
+│   │   │   └── swe_linter.js   # SWE linters (secrets, empty catch, debugger, SELECT *, test detection)
 │   │   ├── ai_analyzer.js      # Gemini 2.0 Flash integration, header auth, clean JSON extraction
 │   │   └── scorer.js           # Exact quantum penalty math (-0.47) and item fingerprint diff engine
 │   └── server/

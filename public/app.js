@@ -12,8 +12,8 @@ const checkedItems = new Set();
 try {
   const savedChecks = JSON.parse(localStorage.getItem('hygiene_checker_checked_items') || '[]');
   savedChecks.forEach(k => checkedItems.add(k));
-} catch {
-  // ignore storage errors
+} catch (err) {
+  console.debug('Could not load cached checklist items:', err.message);
 }
 
 // Elements
@@ -331,8 +331,8 @@ function renderResults(data, diff) {
       }
       try {
         localStorage.setItem('hygiene_checker_checked_items', JSON.stringify([...checkedItems]));
-      } catch {
-        // ignore
+      } catch (err) {
+        console.debug('Could not persist checklist item state:', err.message);
       }
       const textContainer = e.target.nextElementSibling;
       if (textContainer) {
@@ -440,7 +440,8 @@ function copyReportToClipboard() {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(currentResult.reportText).then(() => {
       alert('Platform report copied to clipboard!');
-    }).catch(() => {
+    }).catch((err) => {
+      console.debug('Clipboard writeText failed, using prompt fallback:', err?.message);
       prompt('Copy the report below:', currentResult.reportText);
     });
   } else {

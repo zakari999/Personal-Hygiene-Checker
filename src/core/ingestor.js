@@ -10,6 +10,12 @@ const GIT_ENV = {
   GIT_ASKPASS: 'echo'
 };
 
+function debugLog(context, err) {
+  if (process.env.DEBUG_HYGIENE) {
+    console.debug(`[debug:ingestor] ${context}:`, err?.message || err);
+  }
+}
+
 /**
  * Safely executes git commands using execFileSync without shell invocation.
  */
@@ -45,8 +51,8 @@ export function normalizeRepoInput(input) {
         const resolved = path.resolve(expandedPath);
         return { isLocal: true, path: resolved, name: path.basename(resolved) };
       }
-    } catch {
-      // Continue to URL parsing if not a readable directory
+    } catch (err) {
+      debugLog('Local directory check fallback', err);
     }
   }
 
@@ -130,8 +136,9 @@ export function syncRepository(target, cacheBaseDir = path.resolve(process.cwd()
       safeGit(['checkout', targetBranch], { cwd: repoPath });
       safeGit(['pull', 'origin', targetBranch, '--ff-only'], { cwd: repoPath });
       return repoPath;
-    } catch {
+    } catch (err) {
       // If pull fails (e.g. diverged history), cleanly remove and re-clone
+      debugLog('Git pull failed, re-cloning fresh', err);
       fs.rmSync(repoPath, { recursive: true, force: true });
     }
   }
@@ -171,7 +178,8 @@ export function extractCommitHistory(repoPath) {
         if (path.resolve(topLevel) !== path.resolve(repoPath)) {
           return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial submission export (no git repo)' }];
         }
-      } catch {
+      } catch (err) {
+        debugLog('Git rev-parse show-toplevel fallback', err);
         return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial submission export (no git repo)' }];
       }
     }
@@ -192,7 +200,8 @@ export function extractCommitHistory(repoPath) {
         subject: parts[3] || ''
       };
     });
-  } catch {
+  } catch (err) {
+    debugLog('Extract commit history fallback', err);
     return [{ hash: 'HEAD', date: 'unknown', author: 'student', subject: 'Initial commit (shallow/exported)' }];
   }
 }
@@ -322,7 +331,8 @@ function isBinaryFile(filePath) {
       if (buffer[i] === 0) return true;
     }
     return false;
-  } catch {
+  } catch (err) {
+    debugLog('Binary file check error, assuming binary', err);
     return true;
   }
 }
@@ -415,8 +425,8 @@ export function ingestRepository(inputUrlOrPath) {
         rawContent: raw,
         contentNumbered: numbered
       });
-    } catch {
-      // ignore unreadable
+    } catch (err) {
+      debugLog(`Skipping unreadable source file "${file.relPath}"`, err);
     }
   }
 
@@ -445,8 +455,8 @@ export function ingestRepository(inputUrlOrPath) {
         mimeType,
         base64
       });
-    } catch {
-      // ignore
+    } catch (err) {
+      debugLog(`Skipping unreadable design asset "${img.relPath}"`, err);
     }
   }
 
