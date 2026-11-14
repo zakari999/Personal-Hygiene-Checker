@@ -336,8 +336,18 @@ async function callGeminiAPI(apiKey, model, contents) {
  * Parses and merges AI audit findings with verified static facts.
  */
 function parseAiAuditResponse(aiJson, rubric, staticFindings) {
+  // Normalize aiJson: handle array wrapping [ { categories: [...] } ] or direct array of categories [ { category: "..." } ]
+  let root = aiJson;
+  if (Array.isArray(root)) {
+    if (root.length > 0 && root[0] && root[0].categories) {
+      root = root[0];
+    } else if (root.length > 0 && root[0] && (root[0].category || root[0].name)) {
+      root = { categories: root };
+    }
+  }
+
   const evaluations = [];
-  const rawCategories = aiJson.categories || [];
+  const rawCategories = (root && Array.isArray(root.categories)) ? root.categories : [];
 
   for (const catConfig of rubric.categories) {
     const catKey = normalizeCategoryKey(catConfig.name);
