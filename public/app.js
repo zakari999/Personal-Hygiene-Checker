@@ -1,4 +1,4 @@
-// Client-side Application Logic for Repo Hygiene Checker — Precision Sharp UI
+// Client-side Application Logic for Repo Hygiene Checker — Precision UI
 
 let currentResult = null;
 let currentArtifacts = [];
@@ -110,9 +110,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   sampleButtons.forEach(btn => {
     btn.addEventListener('click', async () => {
       sampleButtons.forEach(b => {
-        b.className = 'btn-sample text-[11px] font-mono-code px-2.5 py-1 rounded bg-[#090a0f] hover:bg-zinc-800 text-zinc-300 border border-white/[0.08] hover:border-white/20 transition-all flex items-center gap-1.5';
+        b.className = 'btn-sample text-xs px-2.5 py-1 rounded bg-[#090a0f] hover:bg-zinc-800 text-zinc-300 border border-white/10 hover:border-white/20 transition-all flex items-center gap-1.5 font-medium';
       });
-      btn.className = 'btn-sample text-[11px] font-mono-code px-2.5 py-1 rounded bg-zinc-800 text-white border border-white/30 transition-all flex items-center gap-1.5 shadow-sm';
+      btn.className = 'btn-sample text-xs px-2.5 py-1 rounded bg-zinc-800 text-white border border-white/30 transition-all flex items-center gap-1.5 font-medium shadow-sm';
 
       inputRepoUrl.value = btn.getAttribute('data-url');
       const branch = btn.getAttribute('data-branch') || 'main';
@@ -162,9 +162,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.filter-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.filter-tab').forEach(t => {
-        t.className = 'filter-tab px-2.5 py-0.5 rounded text-xs font-mono-code bg-zinc-900 text-zinc-400 border border-white/[0.08] hover:text-zinc-200 transition-colors';
+        t.className = 'filter-tab px-3 py-1 rounded text-xs bg-zinc-900 text-zinc-400 border border-white/10 hover:text-zinc-200 transition-colors font-medium';
       });
-      tab.className = 'filter-tab px-2.5 py-0.5 rounded text-xs font-mono-code bg-zinc-200 text-zinc-950 font-bold shadow-sm';
+      tab.className = 'filter-tab px-3 py-1 rounded text-xs bg-zinc-200 text-zinc-950 font-bold shadow-sm';
       currentFilter = tab.getAttribute('data-filter');
       if (currentResult) {
         renderResults({ result: currentResult, repo: currentResult.repo, branch: currentResult.branch }, null);
@@ -223,18 +223,18 @@ async function fetchConfig() {
     if (data.hasGeminiKey) {
       if (data.isValidKeyFormat) {
         configKeyStatus.textContent = 'API Active ✓';
-        configKeyStatus.className = 'text-emerald-400 font-semibold text-[11px]';
+        configKeyStatus.className = 'text-emerald-400 font-semibold text-xs';
         if (keyPing) keyPing.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
         if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
       } else {
         configKeyStatus.textContent = 'Key Check ⚠️';
-        configKeyStatus.className = 'text-amber-400 font-semibold text-[11px]';
+        configKeyStatus.className = 'text-amber-400 font-semibold text-xs';
         if (keyPing) keyPing.className = 'hidden';
         if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
       }
     } else {
       configKeyStatus.textContent = 'Configure Key';
-      configKeyStatus.className = 'text-zinc-400 text-[11px]';
+      configKeyStatus.className = 'text-zinc-400 text-xs';
       if (keyPing) keyPing.className = 'hidden';
       if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-zinc-600';
     }
@@ -335,20 +335,38 @@ function renderResults(data, diff) {
   if (result.aiError) {
     aiWarningBanner.classList.remove('hidden');
     if (/401|api key not valid|invalid/i.test(result.aiError)) {
-      aiWarningTitle.textContent = 'Invalid Gemini API Key Detected (HTTP 401)';
+      aiWarningTitle.textContent = 'Invalid Gemini API Key (HTTP 401)';
       aiWarningMessage.innerHTML = `Google AI rejected the key configured in <code class="text-zinc-200">.env</code>. Please open <button onclick="document.getElementById('btnOpenConfig').click()" class="underline text-amber-200 hover:text-white font-bold">API Settings</button> and paste a valid key. Fallback static linters used.`;
+      configKeyStatus.textContent = 'Invalid Key ⚠️';
+      configKeyStatus.className = 'text-amber-400 font-semibold text-xs';
+      if (keyPing) keyPing.className = 'hidden';
+      if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
     } else if (/402|prepayment|depleted|credits|billing/i.test(result.aiError)) {
-      aiWarningTitle.textContent = 'Prepayment / Billing Notice (HTTP 402)';
-      aiWarningMessage.innerHTML = `Your Google developer key has depleted its prepayment credits. You can generate a free tier API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline text-amber-200 hover:text-white font-bold">Google AI Studio</a> and paste it into <button onclick="document.getElementById('btnOpenConfig').click()" class="underline text-amber-200 hover:text-white font-bold">API Settings</button>. Fallback static linters used.`;
+      aiWarningTitle.textContent = 'Google API Credits Depleted (HTTP 402)';
+      aiWarningMessage.innerHTML = `Your key's developer credits are exhausted. Get a free Gemini API key on <a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline text-amber-200 hover:text-white font-bold">Google AI Studio</a> and paste it into <button onclick="document.getElementById('btnOpenConfig').click()" class="underline text-amber-200 hover:text-white font-bold">API Settings</button>. Fallback static linters used.`;
+      configKeyStatus.textContent = 'Credits Empty ⚠️';
+      configKeyStatus.className = 'text-amber-400 font-semibold text-xs';
+      if (keyPing) keyPing.className = 'hidden';
+      if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
     } else if (/429|quota|rate limit/i.test(result.aiError)) {
-      aiWarningTitle.textContent = 'API Quota Exceeded (HTTP 429)';
-      aiWarningMessage.innerHTML = `Gemini API rate limit reached. Please wait a moment or use a different key in <button onclick="document.getElementById('btnOpenConfig').click()" class="underline text-amber-200 hover:text-white font-bold">API Settings</button>. Fallback static linters used.`;
+      aiWarningTitle.textContent = 'Gemini API Rate Limit (HTTP 429)';
+      aiWarningMessage.innerHTML = `Gemini API rate limit reached. Please wait a moment or switch keys in <button onclick="document.getElementById('btnOpenConfig').click()" class="underline text-amber-200 hover:text-white font-bold">API Settings</button>. Fallback static linters used.`;
+      configKeyStatus.textContent = 'Rate Limit ⚠️';
+      configKeyStatus.className = 'text-amber-400 font-semibold text-xs';
+      if (keyPing) keyPing.className = 'hidden';
+      if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
     } else {
       aiWarningTitle.textContent = 'AI Engine Notice (Fell back to static linters)';
       aiWarningMessage.textContent = result.aiError;
     }
   } else {
     aiWarningBanner.classList.add('hidden');
+    if (result.isAiPowered) {
+      configKeyStatus.textContent = 'API Active ✓';
+      configKeyStatus.className = 'text-emerald-400 font-semibold text-xs';
+      if (keyPing) keyPing.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+      if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+    }
   }
 
   // Target info badge
@@ -387,12 +405,12 @@ function renderResults(data, diff) {
       diffTitle.textContent = `Score Improved by +${diff.improvement.toFixed(2)} pts!`;
       diffSubtitle.textContent = `Penalties dropped from ${diff.previousPenalty.toFixed(2)} pts to ${diff.currentPenalty.toFixed(2)} pts. Resolved ${diff.resolvedCount} issues.`;
       diffBadge.textContent = `+${diff.improvement.toFixed(2)} pts`;
-      diffBadge.className = 'px-2.5 py-1 rounded bg-emerald-900/80 text-emerald-200 font-mono-code font-bold text-xs border border-emerald-700';
+      diffBadge.className = 'px-2.5 py-1 rounded bg-emerald-950 text-emerald-300 font-mono-code font-bold text-xs border border-emerald-800';
     } else if (diff.improvement < 0) {
       diffTitle.textContent = `Sloppiness Increased (${diff.improvement.toFixed(2)} pts)`;
       diffSubtitle.textContent = 'New issues were introduced since the last check.';
       diffBadge.textContent = `${diff.improvement.toFixed(2)} pts`;
-      diffBadge.className = 'px-2.5 py-1 rounded bg-rose-900/80 text-rose-200 font-mono-code font-bold text-xs border border-rose-700';
+      diffBadge.className = 'px-2.5 py-1 rounded bg-rose-950 text-rose-300 font-mono-code font-bold text-xs border border-rose-800';
     } else {
       diffTitle.textContent = 'Score Unchanged';
       diffSubtitle.textContent = 'No change in total penalties detected since the last check.';
@@ -413,10 +431,10 @@ function renderResults(data, diff) {
 
   if (filteredCategories.length === 0) {
     categoriesList.innerHTML = `
-      <div class="p-8 rounded-md bg-[#0e1017] border border-white/[0.08] text-center space-y-2">
+      <div class="p-8 rounded-md bg-[#10121a] border border-white/[0.08] text-center space-y-2">
         <i class="ph-bold ph-check-circle text-3xl text-emerald-400"></i>
-        <h3 class="text-xs font-mono-code font-bold text-emerald-200 uppercase tracking-wider">Zero Issues in Selected Filter</h3>
-        <p class="text-[11px] font-mono-code text-zinc-500">No issues found matching the selected view filter.</p>
+        <h3 class="text-xs font-bold text-emerald-200 uppercase tracking-wider font-mono-code">Zero Issues in Selected Filter</h3>
+        <p class="text-xs text-zinc-500 font-sans">No issues found matching the selected view filter.</p>
       </div>
     `;
     return;
@@ -424,7 +442,7 @@ function renderResults(data, diff) {
 
   filteredCategories.forEach((cat) => {
     const card = document.createElement('div');
-    card.className = 'bg-[#0e1017] border border-white/[0.08] hover:border-white/15 rounded-md p-4 space-y-3 transition-colors';
+    card.className = 'bg-[#10121a] border border-white/[0.08] hover:border-white/15 rounded-md p-4 space-y-3 transition-colors';
 
     let itemsHtml = '';
     const hasItems = cat.items && cat.items.length > 0;
@@ -432,8 +450,8 @@ function renderResults(data, diff) {
 
     if (!hasItems) {
       itemsHtml = `
-        <div class="p-2.5 rounded bg-emerald-950/20 border border-emerald-900/40 text-[11px] font-mono-code text-emerald-300 flex items-center gap-2">
-          <i class="ph-bold ph-check text-xs text-emerald-400"></i>
+        <div class="p-2.5 rounded bg-emerald-950/20 border border-emerald-900/40 text-xs text-emerald-300 flex items-center gap-2 font-sans">
+          <i class="ph-bold ph-check text-xs text-emerald-400 shrink-0"></i>
           <span>Passing cleanly — no sloppiness detected in this criterion.</span>
         </div>
       `;
@@ -443,14 +461,14 @@ function renderResults(data, diff) {
         const isChecked = checkedItems.has(itemKey);
 
         itemsHtml += `
-          <div class="flex items-start gap-3 p-2.5 rounded bg-[#08090d] border border-white/[0.05] hover:border-white/10 transition-colors">
+          <div class="flex items-start gap-3 p-2.5 rounded bg-[#090a0f] border border-white/[0.05] hover:border-white/10 transition-colors">
             ${checklistMode ? `
               <input type="checkbox" id="${itemKey}" data-key="${itemKey}" ${isChecked ? 'checked' : ''} 
-                class="item-checkbox mt-1 w-3.5 h-3.5 rounded border-zinc-700 bg-zinc-900 text-rose-500 focus:ring-0 cursor-pointer">
+                class="item-checkbox mt-1 w-3.5 h-3.5 rounded border-zinc-700 bg-zinc-900 text-rose-500 focus:ring-0 cursor-pointer shrink-0">
             ` : ''}
             <div class="text-xs leading-relaxed text-zinc-300 font-sans flex-1 ${isChecked ? 'line-through opacity-40' : ''}">
-              <button class="citation-btn font-mono-code font-bold text-rose-300 hover:text-white bg-rose-950/60 hover:bg-rose-900 px-2 py-0.5 rounded border border-rose-800/80 text-left transition-colors cursor-pointer text-[11px] inline-flex items-center gap-1" data-citation="${escapeHtml(item.citation)}">
-                <i class="ph-bold ph-code text-[10px]"></i>
+              <button class="citation-btn font-mono-code font-bold text-rose-300 hover:text-white bg-rose-950/60 hover:bg-rose-900 px-2 py-0.5 rounded border border-rose-800/80 text-left transition-colors cursor-pointer text-[11px] inline-flex items-center gap-1 shrink-0" data-citation="${escapeHtml(item.citation)}">
+                <i class="ph-bold ph-code text-[10px] shrink-0"></i>
                 <span>${escapeHtml(item.citation)}</span>
               </button>
               <span class="text-zinc-600 font-bold mx-1.5">—</span>
@@ -468,8 +486,8 @@ function renderResults(data, diff) {
             <i class="ph-bold ${catIcon} text-sm text-zinc-300"></i>
           </div>
           <div>
-            <h3 class="text-xs font-mono-code font-bold text-white tracking-wide uppercase">${escapeHtml(cat.category)}</h3>
-            <span class="text-[10px] font-mono-code text-zinc-500">Sloppiness Level ${cat.level}</span>
+            <h3 class="text-xs font-bold text-white tracking-wide uppercase font-mono-code">${escapeHtml(cat.category)}</h3>
+            <span class="text-[10px] text-zinc-400 font-medium font-sans">Sloppiness Level ${cat.level}</span>
           </div>
         </div>
         <div class="font-mono-code font-bold text-xs ${cat.deduction > 0 ? 'text-rose-400 bg-rose-950/50 border-rose-800/70' : 'text-emerald-400 bg-emerald-950/50 border-emerald-800/70'} px-2.5 py-0.5 rounded border">
@@ -546,7 +564,7 @@ function openCitationViewer(citation) {
         const isMerge = /^merge\s+(pull\s+request|branch)/i.test(c.subject);
 
         html += `
-          <div class="flex items-center gap-2.5 p-2 rounded ${isMerge || isDuplicateEdit || isVague ? 'bg-rose-950/40 border border-rose-800/60' : 'bg-[#08090d] border border-white/[0.05]'}">
+          <div class="flex items-center gap-2.5 p-2 rounded ${isMerge || isDuplicateEdit || isVague ? 'bg-rose-950/40 border border-rose-800/60' : 'bg-[#090a0f] border border-white/[0.05]'}">
             <span class="font-mono-code text-rose-300 font-bold px-1.5 py-0.5 rounded bg-black text-[11px] border border-rose-900/50">${escapeHtml(c.hash)}</span>
             <span class="text-zinc-500 text-[11px] font-mono-code">${escapeHtml(c.date)}</span>
             <span class="text-zinc-200 font-medium text-xs flex-1 truncate font-mono-code">${escapeHtml(c.subject)}</span>
