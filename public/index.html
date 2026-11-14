@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GitHub Repo Hygiene Checker — Module Lab Sloppiness Auditor</title>
+  <title>Repo Hygiene Checker — Module Lab Sloppiness Auditor</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Phosphor Icons -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
@@ -20,36 +20,51 @@
       font-feature-settings: "tnum";
     }
     .line-highlight {
-      background-color: rgba(244, 63, 94, 0.18);
-      border-left: 3px solid #f43f5e;
+      background-color: rgba(239, 68, 68, 0.16);
+      border-left: 3px solid #ef4444;
+    }
+    /* Clean sharp borders and custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090a0f;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #272a38;
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3b3f54;
     }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-rose-500 selection:text-white">
+<body class="bg-[#090a0f] text-zinc-100 min-h-screen flex flex-col antialiased selection:bg-zinc-700 selection:text-white">
 
-  <!-- Header -->
-  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-40">
-    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+  <!-- Clean Top Navigation Bar -->
+  <header class="border-b border-zinc-800/90 bg-[#0d0e14]/95 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-rose-950/40">
-          <i class="ph-bold ph-shield-check text-xl text-white"></i>
+        <div class="w-8 h-8 rounded-sm bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-zinc-200">
+          <i class="ph-bold ph-terminal-window text-base"></i>
         </div>
         <div>
-          <h1 class="font-bold text-lg leading-tight tracking-tight text-white flex items-center gap-2">
-            Module Repo Hygiene Checker
-            <span class="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">Lab Edition</span>
-          </h1>
-          <p class="text-xs text-slate-400">Deep sloppiness inspection for module lab submissions & reports</p>
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm tracking-tight text-white">REPO HYGIENE CHECKER</span>
+            <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded-sm bg-zinc-800 text-zinc-300 border border-zinc-700">Lab & SWE</span>
+          </div>
+          <p class="text-[11px] text-zinc-400">Deterministic & Multimodal Sloppiness Audit Platform</p>
         </div>
       </div>
 
-      <div class="flex items-center gap-3">
-        <button id="btnOpenConfig" class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-300 transition-colors">
-          <i class="ph-bold ph-gear text-sm"></i>
-          <span id="configKeyStatus">Configure API Key</span>
+      <div class="flex items-center gap-2">
+        <button id="btnOpenConfig" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm border border-zinc-700/80 bg-zinc-900 hover:bg-zinc-800 text-xs font-mono text-zinc-300 transition-colors">
+          <i class="ph-bold ph-gear text-xs"></i>
+          <span id="configKeyStatus">API Settings</span>
         </button>
-        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1">
-          <span>Get Free Gemini Key</span>
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="text-xs font-mono text-zinc-400 hover:text-zinc-200 flex items-center gap-1 px-2 py-1.5">
+          <span>AI Studio</span>
           <i class="ph ph-arrow-up-right text-xs"></i>
         </a>
       </div>
@@ -57,147 +72,187 @@
   </header>
 
   <!-- Main Container -->
-  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8 space-y-8">
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 space-y-6">
 
-    <!-- Input Section Card -->
-    <section class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
-      <div class="absolute -right-20 -top-20 w-64 h-64 bg-rose-600/10 rounded-full blur-3xl pointer-events-none"></div>
-      
-      <div class="space-y-5">
+    <!-- Clean Input & Target Selection Card -->
+    <section class="bg-[#10121a] border border-zinc-800/90 rounded-sm p-5 shadow-sm space-y-4">
+      <div class="flex items-center justify-between border-b border-zinc-800/80 pb-3">
         <div>
-          <h2 class="text-base font-semibold text-white flex items-center gap-2">
-            <i class="ph-bold ph-git-branch text-rose-400"></i>
-            Repository & Rubric Selection
+          <h2 class="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+            <i class="ph-bold ph-git-commit text-zinc-400"></i>
+            Repository Target & Branch Configuration
           </h2>
-          <p class="text-xs text-slate-400 mt-1">Enter a public GitHub repository URL or a local folder path to perform the hygiene check.</p>
+          <p class="text-[11px] text-zinc-500 mt-0.5">Enter a local directory or remote repository URL. Select a specific branch to inspect.</p>
         </div>
+        <div class="hidden sm:flex items-center gap-2 text-xs font-mono text-zinc-500">
+          <span>quantum unit:</span>
+          <span class="text-zinc-300 font-semibold">-0.47 pts</span>
+        </div>
+      </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-          <div class="md:col-span-8 space-y-1.5">
-            <label for="inputRepoUrl" class="block text-xs font-medium text-slate-300">GitHub Repository URL or Local Path</label>
-            <div class="relative">
-              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                <i class="ph-bold ph-github-logo text-base"></i>
-              </span>
-              <input type="text" id="inputRepoUrl" placeholder="https://github.com/username/project-repo" 
-                class="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-xl text-sm text-slate-200 placeholder-slate-500 outline-none transition-all">
-            </div>
-          </div>
-
-          <div class="md:col-span-4 space-y-1.5">
-            <label for="selectRubric" class="block text-xs font-medium text-slate-300">Grading Rubric</label>
-            <div class="relative">
-              <select id="selectRubric" class="w-full px-3 py-2.5 bg-slate-950 border border-slate-700 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-xl text-sm text-slate-200 outline-none transition-all">
-                <option value="lab" selected>Module Lab & Design Rubric (Default)</option>
-                <option value="swe">Software Engineering Rubric (table.tsv)</option>
-              </select>
-            </div>
+      <!-- Controls Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+        <!-- Repo URL -->
+        <div class="md:col-span-6 space-y-1">
+          <label for="inputRepoUrl" class="block text-xs font-mono font-medium text-zinc-300">Repository URL or Local Path</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+              <i class="ph-bold ph-git-fork text-sm"></i>
+            </span>
+            <input type="text" id="inputRepoUrl" placeholder="https://github.com/zakari999/wheelhouse-bike-repair.git" 
+              class="w-full pl-9 pr-3 py-2 bg-[#090a0f] border border-zinc-700/80 focus:border-zinc-300 rounded-sm text-xs font-mono text-zinc-200 placeholder-zinc-600 outline-none transition-colors">
           </div>
         </div>
 
-        <!-- Action Row -->
-        <div class="pt-2 flex flex-wrap items-center justify-between gap-4 border-t border-slate-800/80">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-xs text-slate-400">Try a test repo:</span>
-            <button class="btn-sample text-xs px-2.5 py-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 font-medium transition-colors" data-url="./test/fixtures/mock_lab_repo">
-              ★ Kwame's Wheelhouse (Benchmark Lab)
-            </button>
-            <button class="btn-sample text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors" data-url="https://github.com/facebook/react">
-              React
+        <!-- Branch Selector -->
+        <div class="md:col-span-3 space-y-1">
+          <div class="flex items-center justify-between">
+            <label for="selectBranch" class="block text-xs font-mono font-medium text-zinc-300">Git Branch</label>
+            <button id="btnRefreshBranches" class="text-[10px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors" title="Fetch branches from remote repository">
+              <i class="ph ph-arrows-clockwise text-[10px]"></i> fetch
             </button>
           </div>
+          <div class="relative">
+            <select id="selectBranch" class="w-full px-2.5 py-2 bg-[#090a0f] border border-zinc-700/80 focus:border-zinc-300 rounded-sm text-xs font-mono text-zinc-200 outline-none transition-colors">
+              <option value="main" selected>main</option>
+            </select>
+          </div>
+        </div>
 
-          <button id="btnRunCheck" class="flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm text-white bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 shadow-lg shadow-rose-950/50 transition-all hover:scale-[1.01] active:scale-[0.99]">
-            <i class="ph-bold ph-magnifying-glass"></i>
-            <span>Run Hygiene Check</span>
+        <!-- Grading Rubric -->
+        <div class="md:col-span-3 space-y-1">
+          <label for="selectRubric" class="block text-xs font-mono font-medium text-zinc-300">Evaluation Rubric</label>
+          <div class="relative">
+            <select id="selectRubric" class="w-full px-2.5 py-2 bg-[#090a0f] border border-zinc-700/80 focus:border-zinc-300 rounded-sm text-xs font-mono text-zinc-200 outline-none transition-colors">
+              <option value="lab" selected>Module Lab & Design Rubric</option>
+              <option value="swe">SWE 10-Criteria Rubric (table.tsv)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Targets & Run Action Row -->
+      <div class="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] font-mono text-zinc-500 mr-1">Targets:</span>
+          <button class="btn-sample text-[11px] font-mono px-2 py-1 rounded-sm bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700/80 transition-colors" 
+            data-url="./test/fixtures/mock_lab_repo" data-branch="main" data-rubric="lab">
+            ★ Benchmark Lab (Kwame)
+          </button>
+          <button class="btn-sample text-[11px] font-mono px-2 py-1 rounded-sm bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700/80 transition-colors" 
+            data-url="https://github.com/zakari999/wheelhouse-bike-repair.git" data-branch="feat/ee01-responsive-rebuild" data-rubric="lab">
+            wheelhouse (feat branch)
+          </button>
+          <button class="btn-sample text-[11px] font-mono px-2 py-1 rounded-sm bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700/80 transition-colors" 
+            data-url="https://github.com/zakari999/wheelhouse-bike-repair.git" data-branch="main" data-rubric="swe">
+            wheelhouse (main)
           </button>
         </div>
+
+        <button id="btnRunCheck" class="flex items-center gap-2 px-5 py-2 rounded-sm font-mono font-semibold text-xs text-white bg-zinc-100 text-zinc-900 hover:bg-white border border-zinc-300 shadow-sm transition-all active:scale-[0.99]">
+          <i class="ph-bold ph-magnifying-glass"></i>
+          <span>Run Strict Audit</span>
+        </button>
       </div>
     </section>
 
-    <!-- Progress Indicator (Hidden by default) -->
-    <div id="progressCard" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center space-y-4">
+    <!-- Progress Card -->
+    <div id="progressCard" class="hidden bg-[#10121a] border border-zinc-800 rounded-sm p-6 text-center space-y-3">
       <div class="inline-block relative">
-        <div class="w-12 h-12 border-4 border-rose-500/20 border-t-rose-500 rounded-full animate-spin mx-auto"></div>
+        <div class="w-8 h-8 border-2 border-zinc-700 border-t-zinc-200 rounded-full animate-spin mx-auto"></div>
       </div>
       <div>
-        <h3 id="progressTitle" class="text-base font-semibold text-white">Inspecting Repository...</h3>
-        <p id="progressSubtitle" class="text-xs text-slate-400 mt-1">Cloning, numbering lines in artifacts, and executing deep hygiene audit...</p>
+        <h3 id="progressTitle" class="text-xs font-mono font-bold text-white uppercase tracking-wider">Running Audit Pipeline...</h3>
+        <p id="progressSubtitle" class="text-[11px] font-mono text-zinc-400 mt-0.5">Cloning branch, numbering artifacts, running deterministic linters...</p>
       </div>
     </div>
 
-    <!-- Recheck Improvement Banner (Hidden by default) -->
-    <div id="diffBanner" class="hidden bg-emerald-950/60 border border-emerald-700/50 rounded-2xl p-4 flex items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-          <i class="ph-bold ph-trend-up text-xl"></i>
+    <!-- AI Diagnostic / Warning Banner (Shown when API key or model fails) -->
+    <div id="aiWarningBanner" class="hidden bg-amber-950/40 border border-amber-800/80 rounded-sm p-3.5 flex items-start gap-3 text-xs font-mono">
+      <i class="ph-bold ph-warning text-base text-amber-400 shrink-0 mt-0.5"></i>
+      <div class="space-y-1">
+        <div class="font-bold text-amber-300" id="aiWarningTitle">AI Model Notice</div>
+        <p class="text-amber-200/90 leading-relaxed" id="aiWarningMessage"></p>
+      </div>
+    </div>
+
+    <!-- Diff Improvement Banner -->
+    <div id="diffBanner" class="hidden bg-emerald-950/40 border border-emerald-800/80 rounded-sm p-3.5 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-sm bg-emerald-900/60 text-emerald-300 border border-emerald-700/80 flex items-center justify-center shrink-0">
+          <i class="ph-bold ph-trend-up text-sm"></i>
         </div>
         <div>
-          <h4 id="diffTitle" class="text-sm font-semibold text-emerald-200">Score Improved!</h4>
-          <p id="diffSubtitle" class="text-xs text-emerald-400/90 mt-0.5">Penalties reduced. Keep fixing issues until sloppiness is 0.00 pts.</p>
+          <h4 id="diffTitle" class="text-xs font-mono font-bold text-emerald-200">Penalty Reduced!</h4>
+          <p id="diffSubtitle" class="text-[11px] text-emerald-400/90">Fixes verified. Continue resolving citations until total sloppiness is 0.00 pts.</p>
         </div>
       </div>
-      <span id="diffBadge" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono-code font-bold text-sm border border-emerald-500/30">
+      <span id="diffBadge" class="px-2.5 py-1 rounded-sm bg-emerald-900/80 text-emerald-200 font-mono-code font-bold text-xs border border-emerald-700">
         +0.00 pts
       </span>
     </div>
 
-    <!-- Results Section (Hidden by default) -->
-    <section id="resultsSection" class="hidden space-y-6">
+    <!-- Results Section -->
+    <section id="resultsSection" class="hidden space-y-5">
 
-      <!-- Penalty Top Banner matching platform style -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
-        <div class="space-y-1">
-          <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Grading Engine Output</div>
-          <div class="text-3xl font-extrabold text-white flex items-center gap-3">
-            <span>Sloppiness penalty</span>
-            <span id="badgeTotalPenalty" class="font-mono-code text-2xl px-3 py-1 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30">
-              −0.00 pts
-            </span>
+      <!-- Platform Verdict Banner -->
+      <div class="bg-[#10121a] border border-zinc-800 rounded-sm p-5 space-y-4 shadow-sm">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-400">Platform Grading Verdict</span>
+              <span id="badgeTargetInfo" class="text-[10px] font-mono px-1.5 py-0.2 rounded-sm bg-zinc-800 text-zinc-300 border border-zinc-700"></span>
+            </div>
+            <div class="flex items-baseline gap-3">
+              <span class="text-2xl font-bold tracking-tight text-white font-mono">Sloppiness penalty</span>
+              <span id="badgeTotalPenalty" class="font-mono-code text-2xl font-bold px-2 py-0.5 rounded-sm bg-rose-950/60 text-rose-400 border border-rose-800/80">
+                −0.00 pts
+              </span>
+            </div>
+            <p id="subSummary" class="text-xs text-zinc-400">Review the issues below and correct them on your codebase before final submission.</p>
           </div>
-          <p id="subSummary" class="text-xs text-slate-400">Review the issues below and correct them on your codebase before final submission.</p>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="btnRecheck" class="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-mono font-medium transition-colors">
+              <i class="ph-bold ph-arrows-clockwise text-xs"></i>
+              <span>Recheck Repo Now</span>
+            </button>
+            <button id="btnCopyReport" class="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs font-mono font-medium transition-colors">
+              <i class="ph-bold ph-copy text-xs"></i>
+              <span>Copy Platform Report</span>
+            </button>
+            <button id="btnDownloadReport" class="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs font-mono font-medium transition-colors">
+              <i class="ph-bold ph-download-simple text-xs"></i>
+              <span>Download .md</span>
+            </button>
+            <button id="btnToggleChecklist" class="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs font-mono font-medium transition-colors">
+              <i class="ph-bold ph-check-square text-xs"></i>
+              <span id="checklistLabel">Checklist Mode</span>
+            </button>
+          </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <button id="btnRecheck" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-950/40 transition-colors">
-            <i class="ph-bold ph-arrows-clockwise"></i>
-            <span>Recheck Repo Now</span>
-          </button>
-          <button id="btnCopyReport" class="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors">
-            <i class="ph-bold ph-copy"></i>
-            <span>Copy Platform Report</span>
-          </button>
-          <button id="btnDownloadReport" class="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors">
-            <i class="ph-bold ph-download-simple"></i>
-            <span>Download .md</span>
-          </button>
-          <button id="btnToggleChecklist" class="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors">
-            <i class="ph-bold ph-check-square"></i>
-            <span id="checklistLabel">Checklist Mode</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Filter Bar -->
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-slate-400 font-medium">Filter:</span>
-          <button class="filter-tab px-3 py-1 rounded-lg text-xs font-medium bg-rose-500/20 text-rose-300 border border-rose-500/30" data-filter="all">All Categories</button>
-          <button class="filter-tab px-3 py-1 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-800 text-slate-400 border border-slate-700" data-filter="penalties">Penalties Only</button>
-          <button class="filter-tab px-3 py-1 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-800 text-slate-400 border border-slate-700" data-filter="clean">Zero Deductions</button>
-        </div>
-        <div class="text-xs text-slate-500">
-          Tip: Click any <span class="font-mono-code text-slate-300">artifact N, line L</span> tag to view the code excerpt
+        <!-- Filter Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[11px] font-mono text-zinc-500">Filter:</span>
+            <button class="filter-tab px-2 py-0.5 rounded-sm text-xs font-mono bg-zinc-200 text-zinc-950 font-semibold" data-filter="all">All</button>
+            <button class="filter-tab px-2 py-0.5 rounded-sm text-xs font-mono bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-zinc-200" data-filter="penalties">Penalties Only</button>
+            <button class="filter-tab px-2 py-0.5 rounded-sm text-xs font-mono bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-zinc-200" data-filter="clean">Zero Deductions</button>
+          </div>
+          <div class="text-[11px] font-mono text-zinc-500">
+            Tip: Click any <span class="text-zinc-300">artifact N, line L</span> tag to view code excerpt
+          </div>
         </div>
       </div>
 
       <!-- Categories Container -->
-      <div id="categoriesList" class="space-y-6">
-        <!-- Rendered dynamically -->
+      <div id="categoriesList" class="space-y-4">
+        <!-- Dynamically rendered -->
       </div>
 
-      <!-- Final Platform Closing Note -->
-      <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-center text-xs text-slate-400 font-mono-code">
+      <!-- Closing Platform Verdict -->
+      <div class="p-3.5 rounded-sm border border-zinc-800 bg-[#10121a] text-center text-xs text-zinc-400 font-mono-code">
         This was your Professional Hygiene Check. Review the issues above and correct them before your final submission — this pass has now been used.
       </div>
 
@@ -205,86 +260,87 @@
 
   </main>
 
-  <!-- Code Citation Drawer / Viewer Modal -->
-  <div id="modalCodeViewer" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full p-6 space-y-4 shadow-2xl relative max-h-[85vh] flex flex-col">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center">
-            <i class="ph-bold ph-code text-lg"></i>
+  <!-- Code Citation Inspector Modal -->
+  <div id="modalCodeViewer" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#10121a] border border-zinc-800 rounded-sm max-w-4xl w-full p-5 space-y-3 shadow-2xl relative max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 rounded-sm bg-zinc-800 text-zinc-300 flex items-center justify-center text-xs">
+            <i class="ph-bold ph-code"></i>
           </div>
           <div>
-            <h3 id="codeViewerTitle" class="font-bold text-sm text-white">Artifact Inspector</h3>
-            <p id="codeViewerSubtitle" class="text-xs text-slate-400">Referenced source lines</p>
+            <h3 id="codeViewerTitle" class="font-mono font-bold text-xs text-white">Artifact Inspector</h3>
+            <p id="codeViewerSubtitle" class="text-[11px] font-mono text-zinc-500">Referenced source excerpt</p>
           </div>
         </div>
-        <button id="btnCloseCodeViewer" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
-          <i class="ph-bold ph-x text-lg"></i>
+        <button id="btnCloseCodeViewer" class="text-zinc-400 hover:text-white p-1 rounded-sm hover:bg-zinc-800">
+          <i class="ph-bold ph-x text-sm"></i>
         </button>
       </div>
 
-      <div class="flex-1 overflow-y-auto font-mono-code text-xs bg-slate-950 rounded-xl border border-slate-800 p-4 leading-relaxed" id="codeViewerContent">
+      <div class="flex-1 overflow-y-auto font-mono-code text-xs bg-[#090a0f] rounded-sm border border-zinc-800 p-3 leading-relaxed" id="codeViewerContent">
         <!-- Rendered lines -->
       </div>
 
-      <div class="flex items-center justify-between pt-2 border-t border-slate-800 text-xs text-slate-500">
+      <div class="flex items-center justify-between pt-2 border-t border-zinc-800 text-xs text-zinc-500 font-mono">
         <span id="codeViewerFooter">Artifact Line Inspection</span>
-        <button id="btnDismissCodeViewer" class="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200">Close</button>
+        <button id="btnDismissCodeViewer" class="px-3 py-1 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200">Close</button>
       </div>
     </div>
   </div>
 
-  <!-- API Key Config Modal -->
-  <div id="modalConfig" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-        <h3 class="font-bold text-base text-white flex items-center gap-2">
-          <i class="ph-bold ph-key text-rose-400"></i>
+  <!-- API Key & Model Configuration Modal -->
+  <div id="modalConfig" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#10121a] border border-zinc-800 rounded-sm max-w-md w-full p-5 space-y-4 shadow-2xl relative">
+      <div class="flex items-center justify-between pb-2.5 border-b border-zinc-800">
+        <h3 class="font-mono font-bold text-xs text-white uppercase tracking-wider flex items-center gap-2">
+          <i class="ph-bold ph-key text-zinc-400"></i>
           AI Model & API Key Configuration
         </h3>
-        <button id="btnCloseModal" class="text-slate-400 hover:text-white">
-          <i class="ph-bold ph-x text-lg"></i>
+        <button id="btnCloseModal" class="text-zinc-400 hover:text-white">
+          <i class="ph-bold ph-x text-sm"></i>
         </button>
       </div>
 
-      <div class="space-y-4 text-xs">
-        <p class="text-slate-300">
-          The hygiene checker uses <strong class="text-white">Google Gemini 2.0 Flash</strong> to perform 1M+ token repo-wide deep inspection and visual sketch audits. You can get a free API key in seconds with no credit card required.
-        </p>
+      <div class="space-y-3 text-xs font-mono">
+        <div class="p-2.5 rounded-sm bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-400 leading-relaxed">
+          Google Gemini API keys start with <span class="text-zinc-200 font-bold">AIzaSy...</span> (obtainable free in 10 seconds at Google AI Studio). Do not paste CLI or OAuth session tokens.
+        </div>
 
-        <div class="space-y-1.5">
-          <label for="modalApiKey" class="block font-medium text-slate-300">Google Gemini API Key</label>
+        <div class="space-y-1">
+          <label for="modalApiKey" class="block font-medium text-zinc-300">Google Gemini API Key</label>
           <input type="password" id="modalApiKey" placeholder="AIzaSy..." 
-            class="w-full px-3 py-2 bg-slate-950 border border-slate-700 focus:border-rose-500 rounded-xl text-slate-200 font-mono-code text-xs outline-none">
-          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-rose-400 hover:underline pt-1">
-            <span>Get your free Gemini API key on Google AI Studio</span>
-            <i class="ph ph-arrow-up-right"></i>
+            class="w-full px-3 py-2 bg-[#090a0f] border border-zinc-700 focus:border-zinc-300 rounded-sm text-zinc-200 font-mono text-xs outline-none">
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 pt-0.5">
+            <span>Get a free Gemini API key on Google AI Studio</span>
+            <i class="ph ph-arrow-up-right text-[10px]"></i>
           </a>
         </div>
 
-        <div class="space-y-1.5">
-          <label for="modalModel" class="block font-medium text-slate-300">Model</label>
-          <select id="modalModel" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 focus:border-rose-500 rounded-xl text-slate-200 text-xs outline-none">
-            <option value="gemini-2.0-flash" selected>gemini-2.0-flash (Recommended default - Fastest & 1M context)</option>
-            <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-            <option value="gemini-1.5-pro">gemini-1.5-pro (Deepest reasoning)</option>
+        <div class="space-y-1">
+          <label for="modalModel" class="block font-medium text-zinc-300">Model</label>
+          <select id="modalModel" class="w-full px-2.5 py-2 bg-[#090a0f] border border-zinc-700 focus:border-zinc-300 rounded-sm text-zinc-200 text-xs outline-none">
+            <option value="gemini-3.8-flash" selected>gemini-3.8-flash (Recommended default - Fastest & Strict)</option>
+            <option value="gemini-flash-latest">gemini-flash-latest</option>
+            <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+            <option value="gemini-2.5-pro">gemini-2.5-pro (Deep reasoning)</option>
           </select>
         </div>
       </div>
 
-      <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-        <button id="btnCancelModal" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white">
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+        <button id="btnCancelModal" class="px-3 py-1.5 rounded-sm text-xs font-mono text-zinc-400 hover:text-white">
           Cancel
         </button>
-        <button id="btnSaveConfig" class="px-5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-950/40">
-          Save Configuration
+        <button id="btnSaveConfig" class="px-4 py-1.5 rounded-sm text-xs font-mono font-semibold bg-zinc-100 text-zinc-900 hover:bg-white border border-zinc-300 shadow-sm">
+          Save Settings
         </button>
       </div>
     </div>
   </div>
 
-  <footer class="border-t border-slate-800/80 py-4 text-center text-xs text-slate-500">
-    Module Submission Hygiene Checker &bull; Automated Professional Audit Engine
+  <footer class="border-t border-zinc-800/80 py-3 text-center text-[11px] font-mono text-zinc-600">
+    Module Submission Hygiene Checker &bull; Strict Sloppiness Auditor
   </footer>
 
   <script src="/app.js"></script>

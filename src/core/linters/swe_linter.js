@@ -28,6 +28,17 @@ export function runSweChecks(repoBundle, addFinding) {
     });
   }
 
+  const hasGitignore = fileTree.some(f => /(^|\/)\.gitignore$/i.test(f));
+  if (!hasGitignore) {
+    addFinding({
+      category: 'configuration & dependency hygiene',
+      citation: 'artifact 1, line 1',
+      issue: 'no .gitignore file found in repository; untracked temporary files and system caches risk polluting version control.',
+      severity: 1,
+      penaltyUnits: 1
+    });
+  }
+
   // 2. Code Inspection on Source Files (excluding test harnesses & fixtures)
   const codeArtifacts = artifacts.filter(a => /\.(js|mjs|cjs|ts|jsx|tsx|py|java|go|rs|php)$/i.test(a.name));
   for (const art of codeArtifacts) {
@@ -144,9 +155,55 @@ export function runSweChecks(repoBundle, addFinding) {
         break;
       }
     }
+
+    // Readability & Naming: Legacy var declaration
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*var\s+[a-zA-Z0-9_$]+/i.test(line)) {
+        addFinding({
+          category: 'readability & naming',
+          citation: `artifact ${art.index}, line ${i + 1}`,
+          issue: 'legacy `var` declaration detected; modernize codebase using block-scoped `const` or `let`.',
+          severity: 1,
+          penaltyUnits: 1
+        });
+        break;
+      }
+    }
+
+    // Error Handling: Synchronous modal dialogs
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/(^|[^\w\.])(alert|confirm|prompt)\s*\(/i.test(line) && !line.includes('//')) {
+        addFinding({
+          category: 'error handling & observability',
+          citation: `artifact ${art.index}, line ${i + 1}`,
+          issue: 'synchronous dialog (`alert`/`prompt`) used; implement accessible, non-blocking UI notifications.',
+          severity: 1,
+          penaltyUnits: 1
+        });
+        break;
+      }
+    }
   }
 
-  // 3. Test Suite Check
+  // 3. CSS Architecture & Specificity Checks
+  const cssArtifacts = artifacts.filter(a => /\.css$/i.test(a.name));
+  for (const art of cssArtifacts) {
+    const matches = art.rawContent.match(/!important/g);
+    if (matches && matches.length >= 3) {
+      addFinding({
+        category: 'structure & architecture',
+        citation: `artifact ${art.index}, line 1`,
+        issue: `${matches.length} \`!important\` declarations found; refactor selector specificity instead of overriding cascade.`,
+        severity: 1,
+        penaltyUnits: 1
+      });
+      break;
+    }
+  }
+
+  // 4. Test Suite Check
   const hasTests = fileTree.some(f => /(^|\/)(test|tests|__tests__)\b|\.(test|spec)\./i.test(f));
   if (!hasTests) {
     addFinding({

@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import dns from 'node:dns';
+dns.setDefaultResultOrder('ipv4first');
+
 import path from 'node:path';
 import fs from 'node:fs';
 import dotenv from 'dotenv';
@@ -20,8 +23,9 @@ Usage:
 
 Options:
   --rubric <lab|swe>       Choose rubric: 'lab' (Module Lab & Design, default) or 'swe' (Software Engineering table.tsv)
+  --branch, -b <name>      Git branch to checkout and inspect (default: default remote branch or main)
   --key <apiKey>           Google Gemini API key (or set GEMINI_API_KEY in .env)
-  --model <modelName>      Model to use (default: gemini-2.0-flash)
+  --model <modelName>      Model to use (default: gemini-3-flash-preview)
   --output, -o <file>      Save report output to specified file path
   --json                   Output results as structured JSON
   --strict                 Exit with code 1 if any sloppiness penalty > 0 (ideal for CI)
@@ -29,7 +33,7 @@ Options:
 
 Examples:
   node bin/cli.js ./my-local-lab --rubric lab
-  node bin/cli.js https://github.com/user/codebase --rubric swe
+  node bin/cli.js https://github.com/user/codebase --rubric swe --branch feat/rebuild
   node bin/cli.js ./submission --output report.md
   node bin/cli.js ./my-lab --strict
 `);
@@ -43,8 +47,9 @@ async function main() {
 
   let repoInput = null;
   let rubricId = 'lab';
+  let branch = null;
   let apiKey = process.env.GEMINI_API_KEY || '';
-  let model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  let model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
   let jsonOutput = false;
   let outputFile = null;
   let strictMode = false;
@@ -53,6 +58,8 @@ async function main() {
     const arg = args[i];
     if ((arg === '--rubric' || arg === '-r') && args[i + 1]) {
       rubricId = args[++i];
+    } else if ((arg === '--branch' || arg === '-b') && args[i + 1]) {
+      branch = args[++i];
     } else if ((arg === '--key' || arg === '-k') && args[i + 1]) {
       apiKey = args[++i];
     } else if ((arg === '--model' || arg === '-m') && args[i + 1]) {
@@ -82,6 +89,9 @@ async function main() {
   if (!jsonOutput) {
     console.log(`\n🔍 Analyzing repository: ${repoInput}`);
     console.log(`📋 Rubric: ${RUBRICS[rubricId] ? RUBRICS[rubricId].name : rubricId}`);
+    if (branch) {
+      console.log(`📌 Branch: ${branch}`);
+    }
     if (apiKey) {
       console.log(`🤖 Model: ${model} (Gemini AI Powered)`);
     } else {
@@ -91,7 +101,7 @@ async function main() {
   }
 
   try {
-    const repoBundle = ingestRepository(repoInput);
+    const repoBundle = ingestRepository(repoInput, branch);
 
     const result = await analyzeRepository(repoBundle, {
       rubricId,

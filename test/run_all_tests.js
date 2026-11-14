@@ -15,7 +15,7 @@ try {
   execSync('node test/test_swe_rubric.js', { stdio: 'inherit' });
 
   console.log('\n4. Running Server Endpoints & Mock Repo Integration Tests...');
-  execSync('node test/test_server_endpoints.js', { stdio: 'inherit' });
+  execSync('node test/test_server_endpoints.js', { stdio: 'inherit', env: { ...process.env, NODE_ENV: 'test' } });
 
   console.log('\n====================================================');
   console.log('🎉 ALL TEST SUITES PASSED CLEANLY (100% VERIFIED)   ');

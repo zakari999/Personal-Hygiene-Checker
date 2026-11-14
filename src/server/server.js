@@ -1,10 +1,13 @@
+import dns from 'node:dns';
+dns.setDefaultResultOrder('ipv4first');
+
 import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
-import { ingestRepository } from '../core/ingestor.js';
+import { ingestRepository, listRepositoryBranches } from '../core/ingestor.js';
 import { analyzeRepository } from '../core/ai_analyzer.js';
 import { compareHygieneRuns } from '../core/scorer.js';
 import { RUBRICS } from '../core/rubrics.js';
@@ -44,11 +47,37 @@ app.get('/api/rubrics', (req, res) => {
 
 // API: Get Config / Status
 app.get('/api/config', (req, res) => {
-  const hasKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 5);
+  const rawKey = (process.env.GEMINI_API_KEY || '').trim();
+  const hasKey = Boolean(rawKey && rawKey.length > 5);
+  const isValidFormat = Boolean(hasKey && rawKey.startsWith('AIzaSy'));
   res.json({
     hasGeminiKey: hasKey,
-    defaultModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+    isValidKeyFormat: isValidFormat,
+    keyHint: hasKey ? `${rawKey.slice(0, 6)}...${rawKey.slice(-4)}` : '',
+    defaultModel: process.env.GEMINI_MODEL || 'gemini-3-flash-preview'
   });
+});
+
+// API: List Remote or Local Branches
+app.get('/api/branches', (req, res) => {
+  const repoUrl = req.query.repo;
+  if (!repoUrl || typeof repoUrl !== 'string' || !repoUrl.trim()) {
+    return res.status(400).json({ success: false, error: 'repo query param is required.' });
+  }
+
+  try {
+    const data = listRepositoryBranches(repoUrl.trim());
+    res.json({
+      success: true,
+      ...data
+    });
+  } catch (err) {
+    res.json({
+      success: true,
+      branches: ['main'],
+      defaultBranch: 'main'
+    });
+  }
 });
 
 // API: Save Config (.env)
@@ -88,9 +117,11 @@ app.post('/api/config', (req, res) => {
     console.warn('Could not persist to .env:', err.message);
   }
 
+  const rawKey = (process.env.GEMINI_API_KEY || '').trim();
   res.json({
     success: true,
-    hasGeminiKey: Boolean(process.env.GEMINI_API_KEY)
+    hasGeminiKey: Boolean(rawKey && rawKey.length > 5),
+    isValidKeyFormat: Boolean(rawKey && rawKey.startsWith('AIzaSy'))
   });
 });
 
@@ -106,7 +137,7 @@ function serializeArtifacts(artifacts = []) {
 
 // API: Run Repository Hygiene Check
 app.post('/api/check', async (req, res, next) => {
-  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.0-flash' } = req.body || {};
+  const { repoUrl, branch, rubricId = 'lab', apiKey, model = 'gemini-3-flash-preview' } = req.body || {};
 
   if (!repoUrl || typeof repoUrl !== 'string' || !repoUrl.trim()) {
     return res.status(400).json({ success: false, error: 'Repository URL or local path is required.' });
@@ -117,17 +148,18 @@ app.post('/api/check', async (req, res, next) => {
 
   try {
     const keyToUse = (apiKey && typeof apiKey === 'string' && apiKey.trim()) || process.env.GEMINI_API_KEY || '';
-    const repoBundle = ingestRepository(repoUrl.trim());
+    const repoBundle = ingestRepository(repoUrl.trim(), branch ? branch.trim() : null);
 
     const result = await analyzeRepository(repoBundle, {
       rubricId: safeRubricId,
       apiKey: keyToUse,
-      model: typeof model === 'string' ? model.trim() : 'gemini-2.0-flash'
+      model: typeof model === 'string' ? model.trim() : 'gemini-3-flash-preview'
     });
 
     res.json({
       success: true,
       repo: repoBundle.target.name,
+      branch: repoBundle.target.branch || 'main',
       commitCount: repoBundle.commits.length,
       latestCommit: repoBundle.commits[0] || null,
       artifacts: serializeArtifacts(repoBundle.artifacts),
@@ -141,7 +173,7 @@ app.post('/api/check', async (req, res, next) => {
 
 // API: Re-check Repository (With Diff against previous run)
 app.post('/api/recheck', async (req, res, next) => {
-  const { repoUrl, rubricId = 'lab', apiKey, model = 'gemini-2.0-flash', previousResult } = req.body || {};
+  const { repoUrl, branch, rubricId = 'lab', apiKey, model = 'gemini-3-flash-preview', previousResult } = req.body || {};
 
   if (!repoUrl || typeof repoUrl !== 'string' || !repoUrl.trim()) {
     return res.status(400).json({ success: false, error: 'Repository URL or local path is required.' });
@@ -152,12 +184,12 @@ app.post('/api/recheck', async (req, res, next) => {
 
   try {
     const keyToUse = (apiKey && typeof apiKey === 'string' && apiKey.trim()) || process.env.GEMINI_API_KEY || '';
-    const repoBundle = ingestRepository(repoUrl.trim());
+    const repoBundle = ingestRepository(repoUrl.trim(), branch ? branch.trim() : null);
 
     const currentResult = await analyzeRepository(repoBundle, {
       rubricId: safeRubricId,
       apiKey: keyToUse,
-      model: typeof model === 'string' ? model.trim() : 'gemini-2.0-flash'
+      model: typeof model === 'string' ? model.trim() : 'gemini-3-flash-preview'
     });
 
     const diff = previousResult ? compareHygieneRuns(previousResult, currentResult) : null;
@@ -165,6 +197,7 @@ app.post('/api/recheck', async (req, res, next) => {
     res.json({
       success: true,
       repo: repoBundle.target.name,
+      branch: repoBundle.target.branch || 'main',
       commitCount: repoBundle.commits.length,
       latestCommit: repoBundle.commits[0] || null,
       artifacts: serializeArtifacts(repoBundle.artifacts),
@@ -186,10 +219,13 @@ app.use((err, req, res, next) => {
   });
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`\n==================================================`);
-  console.log(`🚀 Hygiene Checker server running on http://localhost:${PORT}`);
-  console.log(`==================================================\n`);
-});
+let server = null;
+if (process.env.NODE_ENV !== 'test') {
+  server = app.listen(PORT, () => {
+    console.log(`\n==================================================`);
+    console.log(`🚀 Hygiene Checker server running on http://localhost:${PORT}`);
+    console.log(`==================================================\n`);
+  });
+}
 
 export { app, server };

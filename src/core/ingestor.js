@@ -31,7 +31,7 @@ function safeGit(args, options = {}) {
 /**
  * Normalizes a repo input string into a standard git clone URL or local directory.
  */
-export function normalizeRepoInput(input) {
+export function normalizeRepoInput(input, branchOverride = null) {
   const trimmed = (input || '').trim();
   if (!trimmed) {
     throw new Error('Repository URL or local directory path is required.');
@@ -49,7 +49,7 @@ export function normalizeRepoInput(input) {
       const stat = fs.statSync(expandedPath);
       if (stat.isDirectory()) {
         const resolved = path.resolve(expandedPath);
-        return { isLocal: true, path: resolved, name: path.basename(resolved) };
+        return { isLocal: true, path: resolved, name: path.basename(resolved), branch: branchOverride || null };
       }
     } catch (err) {
       debugLog('Local directory check fallback', err);
@@ -67,6 +67,11 @@ export function normalizeRepoInput(input) {
     branch = treeMatch[2];
   }
 
+  const selectedBranch = branchOverride ? branchOverride.trim() : branch;
+  if (selectedBranch && !/^[a-zA-Z0-9_\-\.\/]+$/.test(selectedBranch)) {
+    throw new Error(`Invalid git branch name "${selectedBranch}".`);
+  }
+
   // Support both HTTPS (https://github.com/owner/repo) and SSH (git@github.com:owner/repo.git)
   const ghMatch = cleanUrl.match(/github\.com[:\/]([a-zA-Z0-9_\-\.]+)\/([a-zA-Z0-9_\-\.]+?)(\.git)?(\/|$)/i);
   if (ghMatch) {
@@ -78,17 +83,13 @@ export function normalizeRepoInput(input) {
       throw new Error(`Invalid GitHub repository identifiers in "${input}".`);
     }
 
-    if (branch && !/^[a-zA-Z0-9_\-\.\/]+$/.test(branch)) {
-      throw new Error(`Invalid git branch name "${branch}".`);
-    }
-
     return {
       isLocal: false,
       owner,
       repo,
       name: `${owner}/${repo}`,
       cloneUrl: `https://github.com/${owner}/${repo}.git`,
-      branch
+      branch: selectedBranch
     };
   }
 
@@ -103,7 +104,7 @@ export function normalizeRepoInput(input) {
       repo,
       name: `${owner}/${repo}`,
       cloneUrl: cleanUrl.endsWith('.git') ? cleanUrl : `${cleanUrl}.git`,
-      branch
+      branch: selectedBranch
     };
   }
 
@@ -111,10 +112,47 @@ export function normalizeRepoInput(input) {
 }
 
 /**
+ * Lists available branches from a remote repository URL or local git path.
+ */
+export function listRepositoryBranches(inputUrlOrPath) {
+  const target = normalizeRepoInput(inputUrlOrPath);
+  if (target.isLocal) {
+    try {
+      const out = safeGit(['branch', '--list', '--format=%(refname:short)'], { cwd: target.path });
+      const branches = out.split('\n').map(b => b.trim()).filter(Boolean);
+      return { branches: branches.length > 0 ? branches : ['main'], defaultBranch: branches[0] || 'main' };
+    } catch (err) {
+      debugLog('listRepositoryBranches local', err);
+      return { branches: ['main'], defaultBranch: 'main' };
+    }
+  }
+
+  try {
+    const out = safeGit(['ls-remote', '--heads', target.cloneUrl]);
+    const branches = out.split('\n')
+      .filter(l => l.includes('refs/heads/'))
+      .map(l => l.split('refs/heads/')[1].trim())
+      .filter(Boolean);
+    const defaultBranch = branches.includes('main') ? 'main' : branches.includes('master') ? 'master' : (branches[0] || 'main');
+    return { branches: branches.length > 0 ? branches : ['main'], defaultBranch };
+  } catch (err) {
+    debugLog('listRepositoryBranches remote', err);
+    return { branches: ['main'], defaultBranch: 'main' };
+  }
+}
+
+/**
  * Clones or pulls a GitHub repository into a local cache directory using secure array args.
  */
 export function syncRepository(target, cacheBaseDir = process.env.REPOS_CACHE_DIR || path.resolve(process.cwd(), '.repos_cache')) {
   if (target.isLocal) {
+    if (target.branch) {
+      try {
+        safeGit(['checkout', target.branch], { cwd: target.path });
+      } catch (err) {
+        debugLog(`Local checkout branch "${target.branch}" fallback`, err);
+      }
+    }
     return target.path;
   }
 
@@ -133,7 +171,17 @@ export function syncRepository(target, cacheBaseDir = process.env.REPOS_CACHE_DI
       const currentBranch = safeGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoPath });
       const targetBranch = target.branch || currentBranch || 'main';
 
-      safeGit(['checkout', targetBranch], { cwd: repoPath });
+      if (target.branch) {
+        try {
+          safeGit(['fetch', 'origin', `${target.branch}:refs/remotes/origin/${target.branch}`], { cwd: repoPath });
+        } catch (fErr) {
+          debugLog('Branch fetch fallback', fErr);
+        }
+        safeGit(['checkout', '-B', targetBranch, `origin/${targetBranch}`], { cwd: repoPath });
+      } else {
+        safeGit(['checkout', targetBranch], { cwd: repoPath });
+      }
+
       safeGit(['pull', 'origin', targetBranch, '--ff-only'], { cwd: repoPath });
       return repoPath;
     } catch (err) {
@@ -143,8 +191,8 @@ export function syncRepository(target, cacheBaseDir = process.env.REPOS_CACHE_DI
     }
   }
 
-  // Fresh shallow clone
-  const cloneArgs = ['clone', '--depth', '100'];
+  // Fresh shallow clone with all branch tracking references
+  const cloneArgs = ['clone', '--depth', '100', '--no-single-branch'];
   if (target.branch) {
     cloneArgs.push('-b', target.branch);
   }
@@ -152,8 +200,11 @@ export function syncRepository(target, cacheBaseDir = process.env.REPOS_CACHE_DI
 
   try {
     safeGit(cloneArgs);
+    if (target.branch) {
+      safeGit(['checkout', target.branch], { cwd: repoPath });
+    }
   } catch (err) {
-    throw new Error(`Failed to clone git repository (${target.cloneUrl}): ${err.message}`);
+    throw new Error(`Failed to clone git repository (${target.cloneUrl}) on branch "${target.branch || 'default'}": ${err.message}`);
   }
 
   return repoPath;
@@ -340,8 +391,8 @@ function isBinaryFile(filePath) {
 /**
  * Inspects repository and generates line-numbered artifacts.
  */
-export function ingestRepository(inputUrlOrPath) {
-  const target = normalizeRepoInput(inputUrlOrPath);
+export function ingestRepository(inputUrlOrPath, branchOverride = null) {
+  const target = normalizeRepoInput(inputUrlOrPath, branchOverride);
   const repoPath = syncRepository(target);
   const commits = extractCommitHistory(repoPath);
   const allFiles = scanDirectory(repoPath);

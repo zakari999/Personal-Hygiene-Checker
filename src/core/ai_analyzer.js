@@ -1,3 +1,6 @@
+import dns from 'node:dns';
+dns.setDefaultResultOrder('ipv4first');
+
 import { RUBRICS, QUANTUM_UNIT } from './rubrics.js';
 import { runStaticChecks } from './static_analyzer.js';
 import { calculateHygieneScore } from './scorer.js';
@@ -41,16 +44,54 @@ export function extractCleanJson(rawText) {
   if (!rawText) throw new Error('Empty response from model.');
   let cleaned = rawText.trim();
 
-  // Strip markdown code fences if present (e.g. ```json ... ```)
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  // Try direct parse first
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    void err;
   }
 
-  // If the model returned text with JSON inside curly braces
+  // Strip code fences: ```json ... ```
+  const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch) {
+    try {
+      return JSON.parse(fenceMatch[1].trim());
+    } catch (err) {
+      void err;
+    }
+  }
+
+  // Find outermost balanced JSON object
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < cleaned.length; i++) {
+    if (cleaned[i] === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (cleaned[i] === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try {
+          return JSON.parse(cleaned.slice(start, i + 1));
+        } catch (err) {
+          void err;
+        }
+      }
+    }
+  }
+
+  // Fallback: slice from first { to last } and sanitize trailing commas
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace !== -1 && (firstBrace > 0 || lastBrace < cleaned.length - 1)) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = cleaned.slice(firstBrace, lastBrace + 1)
+      .replace(/,\s*([}\]])/g, '$1')
+      .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '');
+    try {
+      return JSON.parse(candidate);
+    } catch (err) {
+      void err;
+    }
   }
 
   return JSON.parse(cleaned);
@@ -63,7 +104,7 @@ export async function analyzeRepository(repoBundle, options = {}) {
   const {
     rubricId = 'lab',
     apiKey = process.env.GEMINI_API_KEY || '',
-    model = process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+    model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
     onProgress = () => {}
   } = options;
 
@@ -102,21 +143,38 @@ export async function analyzeRepository(repoBundle, options = {}) {
     }
   }
 
-  onProgress({ step: 'ai_calling', message: `Running deep analysis with ${model}...` });
+  onProgress({ step: 'ai_calling', message: `Running strict audit with ${model}...` });
 
   try {
     let response;
-    try {
-      response = await callGeminiAPI(apiKey, model, contents);
-    } catch (modelErr) {
-      // If 404 or unsupported model, try fallback model
-      if (/404|not found|unsupported/i.test(modelErr.message) && model !== 'gemini-1.5-flash') {
-        console.warn(`Model ${model} unavailable (${modelErr.message}). Retrying with gemini-1.5-flash fallback...`);
-        onProgress({ step: 'ai_calling', message: `Retrying with gemini-1.5-flash fallback...` });
-        response = await callGeminiAPI(apiKey, 'gemini-1.5-flash', contents);
-      } else {
-        throw modelErr;
+    let activeModel = model;
+    const fallbackCandidates = [model, 'gemini-3-flash-preview', 'gemini-3.8-flash', 'gemini-pro-latest'].filter(
+      (m, idx, arr) => arr.indexOf(m) === idx
+    );
+
+    let lastError = null;
+    for (const candidate of fallbackCandidates) {
+      try {
+        if (candidate !== model) {
+          console.warn(`Model ${activeModel} failed. Attempting failover to ${candidate}...`);
+          onProgress({ step: 'ai_calling', message: `Retrying with ${candidate}...` });
+        }
+        activeModel = candidate;
+        response = await callGeminiAPI(apiKey, candidate, contents);
+        break;
+      } catch (err) {
+        lastError = err;
+        if (/401|api key not valid|access_token_type_unsupported|unauthenticated/i.test(err.message)) {
+          throw new Error('Invalid Gemini API Key (HTTP 401): The key configured is not a valid Google AI Studio key. Official keys start with "AIzaSy...". Generate a free key at https://aistudio.google.com/app/apikey');
+        }
+        if (!/404|not found|unsupported/i.test(err.message)) {
+          throw err;
+        }
       }
+    }
+
+    if (!response && lastError) {
+      throw lastError;
     }
 
     onProgress({ step: 'scoring', message: 'Computing exact sloppiness penalties and formatting report...' });
@@ -127,7 +185,7 @@ export async function analyzeRepository(repoBundle, options = {}) {
     return {
       ...scoreResult,
       isAiPowered: true,
-      modelUsed: model,
+      modelUsed: activeModel,
       commitCount: repoBundle.commits.length,
       artifactCount: repoBundle.artifacts.length
     };
@@ -177,10 +235,14 @@ function buildAuditPrompt(repoBundle, rubric, staticFindings) {
       (c.checks ? `Checks:\n${c.checks.map(k => `  - ${k}`).join('\n')}` : '');
   }).join('\n\n');
 
-  return `You are a Senior Module Lab Reviewer and Code Hygiene Auditor.
-Your task is to inspect the submitted GitHub repository and produce an uncompromising, professional "Hygiene Check" sloppiness audit.
+  return `You are the Lead Module Technical Examiner and Principal Sloppiness Auditor.
+Your objective is to conduct an UNCOMPROMISING, STRICT, and THOROUGH hygiene audit of this submission.
+
+DO NOT BE POLITE, LENIENT, OR FORGIVING.
+Assume that EVERY claim made in the README (e.g. mobile responsiveness, contrast testing, keyboard navigation, form error feedback, cross-browser compatibility, fallback paths, performance, or clean architecture) is UNVERIFIED until concrete code lines in the submitted artifacts prove it. If a claim lacks line-numbered proof or exhibits even minor oversights, PENALIZE IT AGGRESSIVELY.
 
 Target Repository: ${target.name}
+Branch: ${target.branch || 'main'}
 
 ${rubricDescription}
 
@@ -190,23 +252,28 @@ ${commitText}
 
 ${artifactText}
 
-EVALUATION RULES:
-1. Base Penalty Unit is exactly 0.47 points per issue.
-   - Minor gaps = 1 unit (-0.47 pts)
-   - Moderate gaps = 2 units (-0.94 pts)
-   - Notable unverified claims or omissions = 3-6 units (-1.41 to -2.82 pts)
-2. Every critique item MUST use the exact citation syntax:
-   - For document or code issues: "artifact <N>, line <L> — <critique of the claim/omission and concrete action to fix>"
-   - For git commit issues: "artifact <N>, commits — <critique of commit history and concrete squashing/rewording action>"
-3. Each penalized category MUST include:
-   - Category name (exact match from rubric)
-   - Sloppiness Level (1, 2, or 3)
-   - Penalty units (positive integer count of 0.47 units)
-   - An overview sentence summarizing the strengths followed by the key shortcoming (e.g. "The visual system and mobile-first reasoning are strong, but a few layout claims lack supporting detail.")
-   - A list of item citations.
-4. If a category is clean and has no issues, set level to 0, penalty units to 0, and items to [].
-5. Respond ONLY with valid JSON following this exact JSON schema:
+EXAMINATION & SCORING DIRECTIVES:
+1. Quantum Penalty Units:
+   - Each penalty unit is 0.470833 points (displays as -0.47 pts).
+   - Sloppiness Level 1: 1-2 penalty units (-0.47 to -0.94 pts) for minor oversights or missing documentation details.
+   - Sloppiness Level 2: 3-6 penalty units (-1.41 to -2.82 pts) for notable unverified claims, inaccessible elements, unhandled error states, fixed pixel CSS, or noisy git history.
+   - Sloppiness Level 3: 7+ penalty units (-3.29+ pts) for severe architectural deficiencies, security oversights, or missing core deliverables.
+   - Be realistic and demanding: submissions with omissions or superficial claims MUST receive appropriate deductions until fully remediated.
 
+2. Strictness Criteria:
+   - Accessibility: Check for keyboard tab-order evidence, accessible names on tel/whatsapp/icon links, and aria-live/role=alert for form feedback. If missing or thin, assign Level 2 (-2.82 pts).
+   - Responsive & Styling: Check for fixed pixel widths (e.g. 960px, 1200px), lack of fluid units (%, rem, clamp), missing breakpoint tokens, or lack of 360px layout documentation. If found, assign Level 1 or 2 (-0.94 to -1.88 pts).
+   - Form UX & UI Content: Check for documented success/error feedback, failure states (e.g. external communication channel failures), and clear user feedback. If missing, assign Level 1 or 2 (-0.47 to -0.94 pts).
+   - Version Control & Commits: Check for merge commits ("Merge pull request..."), vague subjects ("wip", "update", "fix", "added input"), or near-duplicate edits. If present, assign Level 2 (-0.94 pts).
+   - Design Fidelity: Compare code and README against wireframe/sketch numbering and layout blocks. If deviations exist without documented justification, assign Level 1 (-0.47 pts).
+   - Software Engineering Rubric: Scrutinize architecture, missing test suites, unhandled errors, synchronous alerts, global variable mutations, hardcoded localhost URLs, and unorganized configurations.
+
+3. Citation Syntax (MANDATORY):
+   - For code and document defects: "artifact <N>, line <L> — <sharp critique of the omission/defect and concrete action to fix>"
+   - For git commit defects: "artifact <N>, commits — <critique of noise/squash/reword guidance>"
+
+4. Response Format:
+   Respond ONLY with valid JSON following this exact JSON schema:
 {
   "categories": [
     {
@@ -247,7 +314,8 @@ async function callGeminiAPI(apiKey, model, contents) {
       'Content-Type': 'application/json',
       'x-goog-api-key': apiKey
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(20000)
   });
 
   if (!response.ok) {

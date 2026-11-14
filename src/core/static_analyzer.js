@@ -68,6 +68,18 @@ export function runStaticChecks(repoBundle, rubricId = 'lab') {
         penaltyUnits: 1
       });
     }
+
+    // Detect noisy merge commits
+    const mergeCommits = subjects.filter(s => /^merge\s+(pull\s+request|branch)/i.test(s));
+    if (mergeCommits.length >= 2) {
+      addFinding({
+        category: isLab ? 'Delivery & documentation' : 'build, delivery & version control',
+        citation: 'artifact 1, commits',
+        issue: `${mergeCommits.length} merge commits detected (${mergeCommits.slice(0, 2).map(s => `“${s}”`).join(', ')}); squash PR branches into concise, linear commits before final submission.`,
+        severity: 2,
+        penaltyUnits: 2
+      });
+    }
   }
 
   // ==========================================
