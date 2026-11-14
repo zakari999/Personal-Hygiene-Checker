@@ -49,7 +49,8 @@ app.get('/api/rubrics', (req, res) => {
 app.get('/api/config', (req, res) => {
   const rawKey = (process.env.GEMINI_API_KEY || '').trim();
   const hasKey = Boolean(rawKey && rawKey.length > 5);
-  const isValidFormat = Boolean(hasKey && rawKey.startsWith('AIzaSy'));
+  // Accept standard Google AI Studio keys (AIzaSy...) and Google developer keys (AQ.Ab... or length >= 15)
+  const isValidFormat = Boolean(hasKey && rawKey.length >= 15);
   res.json({
     hasGeminiKey: hasKey,
     isValidKeyFormat: isValidFormat,
@@ -121,7 +122,7 @@ app.post('/api/config', (req, res) => {
   res.json({
     success: true,
     hasGeminiKey: Boolean(rawKey && rawKey.length > 5),
-    isValidKeyFormat: Boolean(rawKey && rawKey.startsWith('AIzaSy'))
+    isValidKeyFormat: Boolean(rawKey && rawKey.length >= 15)
   });
 });
 

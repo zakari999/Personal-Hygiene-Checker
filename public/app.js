@@ -167,10 +167,10 @@ async function fetchConfig() {
     const data = await res.json();
     if (data.hasGeminiKey) {
       if (data.isValidKeyFormat) {
-        configKeyStatus.textContent = 'Key Active ✓';
+        configKeyStatus.textContent = 'API Key Active ✓';
         configKeyStatus.className = 'text-emerald-400 font-semibold';
       } else {
-        configKeyStatus.textContent = 'Invalid Key Format ⚠️';
+        configKeyStatus.textContent = 'Key Too Short ⚠️';
         configKeyStatus.className = 'text-amber-400 font-semibold';
       }
     } else {
