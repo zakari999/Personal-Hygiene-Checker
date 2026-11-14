@@ -8,6 +8,34 @@ let checklistMode = true;
 let currentFilter = 'all';
 const checkedItems = new Set();
 
+// Category Icon Mapping
+const CATEGORY_ICONS = {
+  'readability & naming': 'ph-text-aa',
+  'structure & architecture': 'ph-tree-structure',
+  'correctness & robustness': 'ph-shield-check',
+  'error handling & observability': 'ph-activity',
+  'security & data protection': 'ph-lock-key',
+  'configuration & dependency hygiene': 'ph-sliders-horizontal',
+  'api & database hygiene': 'ph-database',
+  'test hygiene': 'ph-test-tube',
+  'build, delivery & version control': 'ph-git-branch',
+  'documentation & completeness': 'ph-book-open',
+  'styling & responsive layout': 'ph-device-mobile',
+  'accessibility': 'ph-wheelchair',
+  'ui content & form ux': 'ph-chats-circle',
+  'design-artifact fidelity': 'ph-paint-brush-broad'
+};
+
+function getCategoryIcon(name = '') {
+  const norm = name.toLowerCase().replace(/&/g, '&').trim();
+  for (const [key, icon] of Object.entries(CATEGORY_ICONS)) {
+    if (norm.includes(key) || key.includes(norm)) {
+      return icon;
+    }
+  }
+  return 'ph-check-circle';
+}
+
 // Load persisted checked items from localStorage
 try {
   const savedChecks = JSON.parse(localStorage.getItem('hygiene_checker_checked_items') || '[]');
@@ -16,7 +44,7 @@ try {
   console.debug('Could not load cached checklist items:', err.message);
 }
 
-// Elements
+// DOM Elements
 const btnOpenConfig = document.getElementById('btnOpenConfig');
 const btnCloseModal = document.getElementById('btnCloseModal');
 const btnCancelModal = document.getElementById('btnCancelModal');
@@ -25,6 +53,8 @@ const modalConfig = document.getElementById('modalConfig');
 const modalApiKey = document.getElementById('modalApiKey');
 const modalModel = document.getElementById('modalModel');
 const configKeyStatus = document.getElementById('configKeyStatus');
+const keyPing = document.getElementById('keyPing');
+const keyDot = document.getElementById('keyDot');
 
 const inputRepoUrl = document.getElementById('inputRepoUrl');
 const selectBranch = document.getElementById('selectBranch');
@@ -51,9 +81,16 @@ const subSummary = document.getElementById('subSummary');
 const categoriesList = document.getElementById('categoriesList');
 const btnRecheck = document.getElementById('btnRecheck');
 const btnCopyReport = document.getElementById('btnCopyReport');
+const copyReportLabel = document.getElementById('copyReportLabel');
 const btnDownloadReport = document.getElementById('btnDownloadReport');
 const btnToggleChecklist = document.getElementById('btnToggleChecklist');
 const checklistLabel = document.getElementById('checklistLabel');
+
+// Metric Strip Elements
+const statPenaltyUnits = document.getElementById('statPenaltyUnits');
+const statDefectsCount = document.getElementById('statDefectsCount');
+const statArtifactsCount = document.getElementById('statArtifactsCount');
+const statCommitsCount = document.getElementById('statCommitsCount');
 
 // Code Viewer Modal Elements
 const modalCodeViewer = document.getElementById('modalCodeViewer');
@@ -69,11 +106,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   await fetchConfig();
 
   // Setup Sample Buttons
-  document.querySelectorAll('.btn-sample').forEach(btn => {
+  const sampleButtons = document.querySelectorAll('.btn-sample');
+  sampleButtons.forEach(btn => {
     btn.addEventListener('click', async () => {
+      sampleButtons.forEach(b => {
+        b.className = 'btn-sample text-[11px] font-mono-code px-2.5 py-1 rounded bg-[#090a0f] hover:bg-zinc-800 text-zinc-300 border border-white/[0.08] hover:border-white/20 transition-all flex items-center gap-1.5';
+      });
+      btn.className = 'btn-sample text-[11px] font-mono-code px-2.5 py-1 rounded bg-zinc-800 text-white border border-white/30 transition-all flex items-center gap-1.5 shadow-sm';
+
       inputRepoUrl.value = btn.getAttribute('data-url');
       const branch = btn.getAttribute('data-branch') || 'main';
-      const rubric = btn.getAttribute('data-rubric') || 'lab';
+      const rubric = btn.getAttribute('data-rubric') || 'swe';
       selectRubric.value = rubric;
 
       await fetchBranches(inputRepoUrl.value, branch);
@@ -119,14 +162,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.filter-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.filter-tab').forEach(t => {
-        t.className = 'filter-tab px-2 py-0.5 rounded-sm text-xs font-mono bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-zinc-200';
+        t.className = 'filter-tab px-2.5 py-0.5 rounded text-xs font-mono-code bg-zinc-900 text-zinc-400 border border-white/[0.08] hover:text-zinc-200 transition-colors';
       });
-      tab.className = 'filter-tab px-2 py-0.5 rounded-sm text-xs font-mono bg-zinc-200 text-zinc-950 font-semibold';
+      tab.className = 'filter-tab px-2.5 py-0.5 rounded text-xs font-mono-code bg-zinc-200 text-zinc-950 font-bold shadow-sm';
       currentFilter = tab.getAttribute('data-filter');
       if (currentResult) {
         renderResults({ result: currentResult, repo: currentResult.repo, branch: currentResult.branch }, null);
       }
     });
+  });
+
+  // Global Keyboard Shortcuts (Cmd+Enter to audit, Escape to close modals)
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      runCheck(false);
+    }
+    if (e.key === 'Escape') {
+      modalConfig.classList.add('hidden');
+      modalCodeViewer.classList.add('hidden');
+    }
   });
 });
 
@@ -134,7 +189,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function fetchBranches(repoUrl, preferredBranch = null) {
   if (!repoUrl) return;
 
-  btnRefreshBranches.innerHTML = '<i class="ph ph-circle-notch animate-spin text-[10px]"></i>';
+  btnRefreshBranches.innerHTML = '<i class="ph-bold ph-circle-notch animate-spin text-[10px]"></i>';
   try {
     const res = await fetch(`/api/branches?repo=${encodeURIComponent(repoUrl)}`);
     const data = await res.json();
@@ -156,7 +211,7 @@ async function fetchBranches(repoUrl, preferredBranch = null) {
   } catch (err) {
     console.debug('Could not auto-fetch branches:', err.message);
   } finally {
-    btnRefreshBranches.innerHTML = '<i class="ph ph-arrows-clockwise text-[10px]"></i> fetch';
+    btnRefreshBranches.innerHTML = '<i class="ph-bold ph-arrows-clockwise text-[10px]"></i> fetch';
   }
 }
 
@@ -167,15 +222,21 @@ async function fetchConfig() {
     const data = await res.json();
     if (data.hasGeminiKey) {
       if (data.isValidKeyFormat) {
-        configKeyStatus.textContent = 'API Key Active ✓';
-        configKeyStatus.className = 'text-emerald-400 font-semibold';
+        configKeyStatus.textContent = 'API Active ✓';
+        configKeyStatus.className = 'text-emerald-400 font-semibold text-[11px]';
+        if (keyPing) keyPing.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+        if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
       } else {
-        configKeyStatus.textContent = 'Key Too Short ⚠️';
-        configKeyStatus.className = 'text-amber-400 font-semibold';
+        configKeyStatus.textContent = 'Key Check ⚠️';
+        configKeyStatus.className = 'text-amber-400 font-semibold text-[11px]';
+        if (keyPing) keyPing.className = 'hidden';
+        if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
       }
     } else {
-      configKeyStatus.textContent = 'API Settings';
-      configKeyStatus.className = 'text-zinc-300';
+      configKeyStatus.textContent = 'Configure Key';
+      configKeyStatus.className = 'text-zinc-400 text-[11px]';
+      if (keyPing) keyPing.className = 'hidden';
+      if (keyDot) keyDot.className = 'relative inline-flex rounded-full h-2 w-2 bg-zinc-600';
     }
     if (data.defaultModel) {
       modalModel.value = data.defaultModel;
@@ -200,7 +261,6 @@ async function saveConfig() {
     if (data.success) {
       modalConfig.classList.add('hidden');
       await fetchConfig();
-      alert('Configuration saved successfully!');
     }
   } catch (err) {
     alert('Error saving configuration: ' + err.message);
@@ -211,7 +271,6 @@ async function saveConfig() {
 async function runCheck(isRecheck = false) {
   const repoUrl = inputRepoUrl.value.trim();
   if (!repoUrl) {
-    alert('Please enter a GitHub repository URL or a local folder path.');
     inputRepoUrl.focus();
     return;
   }
@@ -226,8 +285,8 @@ async function runCheck(isRecheck = false) {
   diffBanner.classList.add('hidden');
   aiWarningBanner.classList.add('hidden');
 
-  progressTitle.textContent = isRecheck ? 'Re-checking Branch & Computing Diffs...' : `Auditing Branch: ${branch}...`;
-  progressSubtitle.textContent = 'Pulling commits, inspecting line artifacts, and executing uncompromising sloppiness audit...';
+  progressTitle.textContent = isRecheck ? 'Re-auditing Repository & Computing Diffs...' : `Strict Audit: ${branch}...`;
+  progressSubtitle.textContent = 'Running line-by-line semantic inspection and platform quantum grading...';
 
   try {
     const endpoint = isRecheck ? '/api/recheck' : '/api/check';
@@ -277,7 +336,13 @@ function renderResults(data, diff) {
     aiWarningBanner.classList.remove('hidden');
     if (/401|api key not valid|invalid/i.test(result.aiError)) {
       aiWarningTitle.textContent = 'Invalid Gemini API Key Detected (HTTP 401)';
-      aiWarningMessage.innerHTML = `Google AI rejected the key configured in <code class="text-zinc-200">.env</code>. Official keys start with <strong class="text-white">AIzaSy...</strong>. Please open <button onclick="document.getElementById('btnOpenConfig').click()" class="underline text-amber-200 hover:text-white font-bold">API Settings</button> and paste a valid key from Google AI Studio. The audit ran using deterministic static linters.`;
+      aiWarningMessage.innerHTML = `Google AI rejected the key configured in <code class="text-zinc-200">.env</code>. Please open <button onclick="document.getElementById('btnOpenConfig').click()" class="underline text-amber-200 hover:text-white font-bold">API Settings</button> and paste a valid key. Fallback static linters used.`;
+    } else if (/402|prepayment|depleted|credits|billing/i.test(result.aiError)) {
+      aiWarningTitle.textContent = 'Prepayment / Billing Notice (HTTP 402)';
+      aiWarningMessage.innerHTML = `Your Google developer key has depleted its prepayment credits. You can generate a free tier API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline text-amber-200 hover:text-white font-bold">Google AI Studio</a> and paste it into <button onclick="document.getElementById('btnOpenConfig').click()" class="underline text-amber-200 hover:text-white font-bold">API Settings</button>. Fallback static linters used.`;
+    } else if (/429|quota|rate limit/i.test(result.aiError)) {
+      aiWarningTitle.textContent = 'API Quota Exceeded (HTTP 429)';
+      aiWarningMessage.innerHTML = `Gemini API rate limit reached. Please wait a moment or use a different key in <button onclick="document.getElementById('btnOpenConfig').click()" class="underline text-amber-200 hover:text-white font-bold">API Settings</button>. Fallback static linters used.`;
     } else {
       aiWarningTitle.textContent = 'AI Engine Notice (Fell back to static linters)';
       aiWarningMessage.textContent = result.aiError;
@@ -295,12 +360,25 @@ function renderResults(data, diff) {
   // Total penalty badge
   badgeTotalPenalty.textContent = result.totalDeductionFormatted;
   if (result.totalPenalty === 0) {
-    badgeTotalPenalty.className = 'font-mono-code text-2xl font-bold px-2 py-0.5 rounded-sm bg-emerald-950/60 text-emerald-400 border border-emerald-800/80';
-    subSummary.textContent = 'All hygiene checks passed with zero sloppiness detected. Clean and ready for final submission.';
+    badgeTotalPenalty.className = 'font-mono-code text-2xl md:text-3xl font-black px-2.5 py-0.5 rounded bg-emerald-950/70 text-emerald-400 border border-emerald-800/80 shadow-[0_0_15px_rgba(16,185,129,0.15)]';
+    subSummary.textContent = 'All hygiene checks passed cleanly with zero sloppiness detected. Codebase ready for submission.';
   } else {
-    badgeTotalPenalty.className = 'font-mono-code text-2xl font-bold px-2 py-0.5 rounded-sm bg-rose-950/60 text-rose-400 border border-rose-800/80';
+    badgeTotalPenalty.className = 'font-mono-code text-2xl md:text-3xl font-black px-2.5 py-0.5 rounded bg-rose-950/70 text-rose-400 border border-rose-800/80 shadow-[0_0_15px_rgba(244,63,94,0.15)]';
     subSummary.textContent = 'Review the issues below and correct them on your codebase before final submission.';
   }
+
+  // Compute stat metrics
+  let totalUnits = 0;
+  let totalDefects = 0;
+  (result.categories || []).forEach(c => {
+    totalUnits += (c.penaltyUnits || 0);
+    totalDefects += (c.items ? c.items.length : 0);
+  });
+
+  if (statPenaltyUnits) statPenaltyUnits.textContent = `${totalUnits} units`;
+  if (statDefectsCount) statDefectsCount.textContent = `${totalDefects} defects`;
+  if (statArtifactsCount) statArtifactsCount.textContent = `${currentArtifacts.length} files`;
+  if (statCommitsCount) statCommitsCount.textContent = `${currentCommits.length} commits`;
 
   // Handle Diff Banner if rechecking
   if (diff) {
@@ -309,17 +387,17 @@ function renderResults(data, diff) {
       diffTitle.textContent = `Score Improved by +${diff.improvement.toFixed(2)} pts!`;
       diffSubtitle.textContent = `Penalties dropped from ${diff.previousPenalty.toFixed(2)} pts to ${diff.currentPenalty.toFixed(2)} pts. Resolved ${diff.resolvedCount} issues.`;
       diffBadge.textContent = `+${diff.improvement.toFixed(2)} pts`;
-      diffBadge.className = 'px-2.5 py-1 rounded-sm bg-emerald-900/80 text-emerald-200 font-mono-code font-bold text-xs border border-emerald-700';
+      diffBadge.className = 'px-2.5 py-1 rounded bg-emerald-900/80 text-emerald-200 font-mono-code font-bold text-xs border border-emerald-700';
     } else if (diff.improvement < 0) {
       diffTitle.textContent = `Sloppiness Increased (${diff.improvement.toFixed(2)} pts)`;
       diffSubtitle.textContent = 'New issues were introduced since the last check.';
       diffBadge.textContent = `${diff.improvement.toFixed(2)} pts`;
-      diffBadge.className = 'px-2.5 py-1 rounded-sm bg-rose-900/80 text-rose-200 font-mono-code font-bold text-xs border border-rose-700';
+      diffBadge.className = 'px-2.5 py-1 rounded bg-rose-900/80 text-rose-200 font-mono-code font-bold text-xs border border-rose-700';
     } else {
       diffTitle.textContent = 'Score Unchanged';
       diffSubtitle.textContent = 'No change in total penalties detected since the last check.';
       diffBadge.textContent = '0.00 pts';
-      diffBadge.className = 'px-2.5 py-1 rounded-sm bg-zinc-800 text-zinc-300 font-mono-code font-bold text-xs border border-zinc-700';
+      diffBadge.className = 'px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 font-mono-code font-bold text-xs border border-zinc-700';
     }
   }
 
@@ -335,10 +413,10 @@ function renderResults(data, diff) {
 
   if (filteredCategories.length === 0) {
     categoriesList.innerHTML = `
-      <div class="p-6 rounded-sm bg-[#10121a] border border-zinc-800 text-center space-y-1">
-        <i class="ph-bold ph-check-circle text-2xl text-emerald-400"></i>
-        <h3 class="text-xs font-mono font-bold text-emerald-200 uppercase">Zero Issues in Filter</h3>
-        <p class="text-[11px] font-mono text-zinc-500">No issues found matching the selected view filter.</p>
+      <div class="p-8 rounded-md bg-[#0e1017] border border-white/[0.08] text-center space-y-2">
+        <i class="ph-bold ph-check-circle text-3xl text-emerald-400"></i>
+        <h3 class="text-xs font-mono-code font-bold text-emerald-200 uppercase tracking-wider">Zero Issues in Selected Filter</h3>
+        <p class="text-[11px] font-mono-code text-zinc-500">No issues found matching the selected view filter.</p>
       </div>
     `;
     return;
@@ -346,14 +424,15 @@ function renderResults(data, diff) {
 
   filteredCategories.forEach((cat) => {
     const card = document.createElement('div');
-    card.className = 'bg-[#10121a] border border-zinc-800 rounded-sm p-4 space-y-3';
+    card.className = 'bg-[#0e1017] border border-white/[0.08] hover:border-white/15 rounded-md p-4 space-y-3 transition-colors';
 
     let itemsHtml = '';
     const hasItems = cat.items && cat.items.length > 0;
+    const catIcon = getCategoryIcon(cat.category);
 
     if (!hasItems) {
       itemsHtml = `
-        <div class="p-2.5 rounded-sm bg-emerald-950/20 border border-emerald-900/40 text-[11px] font-mono text-emerald-300 flex items-center gap-2">
+        <div class="p-2.5 rounded bg-emerald-950/20 border border-emerald-900/40 text-[11px] font-mono-code text-emerald-300 flex items-center gap-2">
           <i class="ph-bold ph-check text-xs text-emerald-400"></i>
           <span>Passing cleanly — no sloppiness detected in this criterion.</span>
         </div>
@@ -364,17 +443,18 @@ function renderResults(data, diff) {
         const isChecked = checkedItems.has(itemKey);
 
         itemsHtml += `
-          <div class="flex items-start gap-2.5 p-2.5 rounded-sm bg-[#090a0f] border border-zinc-800 hover:border-zinc-700 transition-colors">
+          <div class="flex items-start gap-3 p-2.5 rounded bg-[#08090d] border border-white/[0.05] hover:border-white/10 transition-colors">
             ${checklistMode ? `
               <input type="checkbox" id="${itemKey}" data-key="${itemKey}" ${isChecked ? 'checked' : ''} 
-                class="item-checkbox mt-0.5 w-3.5 h-3.5 rounded-sm border-zinc-700 bg-zinc-900 text-zinc-100 focus:ring-0 cursor-pointer">
+                class="item-checkbox mt-1 w-3.5 h-3.5 rounded border-zinc-700 bg-zinc-900 text-rose-500 focus:ring-0 cursor-pointer">
             ` : ''}
-            <div class="text-xs leading-relaxed text-zinc-300 ${isChecked ? 'line-through opacity-40' : ''}">
-              <button class="citation-btn font-mono-code font-bold text-rose-300 hover:text-rose-200 bg-rose-950/50 hover:bg-rose-900/60 px-1 py-0.5 rounded-sm border border-rose-800/80 text-left transition-colors cursor-pointer" data-citation="${escapeHtml(item.citation)}">
-                ${escapeHtml(item.citation)}
+            <div class="text-xs leading-relaxed text-zinc-300 font-sans flex-1 ${isChecked ? 'line-through opacity-40' : ''}">
+              <button class="citation-btn font-mono-code font-bold text-rose-300 hover:text-white bg-rose-950/60 hover:bg-rose-900 px-2 py-0.5 rounded border border-rose-800/80 text-left transition-colors cursor-pointer text-[11px] inline-flex items-center gap-1" data-citation="${escapeHtml(item.citation)}">
+                <i class="ph-bold ph-code text-[10px]"></i>
+                <span>${escapeHtml(item.citation)}</span>
               </button>
-              <span class="text-zinc-600 font-bold mx-1">—</span>
-              <span class="text-zinc-300 font-normal">${escapeHtml(item.issue)}</span>
+              <span class="text-zinc-600 font-bold mx-1.5">—</span>
+              <span class="text-zinc-300 font-normal leading-relaxed">${escapeHtml(item.issue)}</span>
             </div>
           </div>
         `;
@@ -382,23 +462,28 @@ function renderResults(data, diff) {
     }
 
     card.innerHTML = `
-      <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-zinc-800/80 pb-2.5">
-        <div>
-          <h3 class="text-sm font-bold text-white tracking-tight font-mono">${escapeHtml(cat.category)}</h3>
-          <span class="text-[11px] font-mono text-zinc-500">Sloppiness Level ${cat.level}</span>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-white/[0.06] pb-2.5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-7 h-7 rounded bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-300 shrink-0">
+            <i class="ph-bold ${catIcon} text-sm text-zinc-300"></i>
+          </div>
+          <div>
+            <h3 class="text-xs font-mono-code font-bold text-white tracking-wide uppercase">${escapeHtml(cat.category)}</h3>
+            <span class="text-[10px] font-mono-code text-zinc-500">Sloppiness Level ${cat.level}</span>
+          </div>
         </div>
-        <div class="font-mono-code font-bold text-xs ${cat.deduction > 0 ? 'text-rose-400 bg-rose-950/50 border-rose-800/70' : 'text-emerald-400 bg-emerald-950/50 border-emerald-800/70'} px-2 py-0.5 rounded-sm border">
-          ${cat.deductionFormatted}
+        <div class="font-mono-code font-bold text-xs ${cat.deduction > 0 ? 'text-rose-400 bg-rose-950/50 border-rose-800/70' : 'text-emerald-400 bg-emerald-950/50 border-emerald-800/70'} px-2.5 py-0.5 rounded border">
+          ${cat.deductionFormatted} ${cat.penaltyUnits > 0 ? `<span class="text-[10px] opacity-75 font-normal">(${cat.penaltyUnits} units)</span>` : ''}
         </div>
       </div>
 
       ${cat.summary ? `
-        <p class="text-xs text-zinc-400 leading-relaxed font-sans">
+        <p class="text-xs text-zinc-400 leading-relaxed font-sans pt-0.5">
           ${escapeHtml(cat.summary)}
         </p>
       ` : ''}
 
-      <div class="space-y-1.5 pt-0.5">
+      <div class="space-y-1.5 pt-1">
         ${itemsHtml}
       </div>
     `;
@@ -434,7 +519,7 @@ function renderResults(data, diff) {
   // Attach citation button listeners to open code viewer
   document.querySelectorAll('.citation-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const citation = e.target.getAttribute('data-citation');
+      const citation = e.target.closest('.citation-btn').getAttribute('data-citation');
       openCitationViewer(citation);
     });
   });
@@ -461,13 +546,13 @@ function openCitationViewer(citation) {
         const isMerge = /^merge\s+(pull\s+request|branch)/i.test(c.subject);
 
         html += `
-          <div class="flex items-center gap-2.5 p-1.5 rounded-sm ${isMerge || isDuplicateEdit || isVague ? 'bg-rose-950/40 border border-rose-800/60' : 'bg-[#10121a] border border-zinc-800'}">
-            <span class="font-mono-code text-rose-300 font-semibold px-1.5 py-0.2 rounded-sm bg-black text-[11px]">${escapeHtml(c.hash)}</span>
-            <span class="text-zinc-500 text-[11px]">${escapeHtml(c.date)}</span>
-            <span class="text-zinc-300 font-medium text-xs flex-1 truncate font-mono">${escapeHtml(c.subject)}</span>
-            ${isMerge ? '<span class="text-[10px] uppercase font-mono px-1 py-0.2 rounded-sm bg-rose-950 text-rose-300 border border-rose-800">merge</span>' : ''}
-            ${isVague ? '<span class="text-[10px] uppercase font-mono px-1 py-0.2 rounded-sm bg-amber-950 text-amber-300 border border-amber-800">vague</span>' : ''}
-            ${isDuplicateEdit ? '<span class="text-[10px] uppercase font-mono px-1 py-0.2 rounded-sm bg-rose-950 text-rose-300 border border-rose-800">squash</span>' : ''}
+          <div class="flex items-center gap-2.5 p-2 rounded ${isMerge || isDuplicateEdit || isVague ? 'bg-rose-950/40 border border-rose-800/60' : 'bg-[#08090d] border border-white/[0.05]'}">
+            <span class="font-mono-code text-rose-300 font-bold px-1.5 py-0.5 rounded bg-black text-[11px] border border-rose-900/50">${escapeHtml(c.hash)}</span>
+            <span class="text-zinc-500 text-[11px] font-mono-code">${escapeHtml(c.date)}</span>
+            <span class="text-zinc-200 font-medium text-xs flex-1 truncate font-mono-code">${escapeHtml(c.subject)}</span>
+            ${isMerge ? '<span class="text-[9px] uppercase font-mono-code font-bold px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800">merge</span>' : ''}
+            ${isVague ? '<span class="text-[9px] uppercase font-mono-code font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">vague</span>' : ''}
+            ${isDuplicateEdit ? '<span class="text-[9px] uppercase font-mono-code font-bold px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800">squash</span>' : ''}
           </div>
         `;
       });
@@ -518,8 +603,8 @@ function openCitationViewer(citation) {
     const lineText = lines[i] || '';
 
     html += `
-      <div class="flex items-start py-0.5 px-2 font-mono text-xs ${isTarget ? 'line-highlight text-white font-semibold' : 'text-zinc-400 hover:text-zinc-200'}">
-        <span class="w-10 shrink-0 text-zinc-600 select-none text-right pr-3 font-mono">${lineNum}</span>
+      <div class="flex items-start py-0.5 px-2 font-mono-code text-xs ${isTarget ? 'line-highlight text-white font-semibold' : 'text-zinc-400 hover:text-zinc-200'}">
+        <span class="w-10 shrink-0 text-zinc-600 select-none text-right pr-3 font-mono-code">${lineNum}</span>
         <span class="flex-1 whitespace-pre-wrap break-all">${escapeHtml(lineText)}</span>
       </div>
     `;
@@ -529,12 +614,18 @@ function openCitationViewer(citation) {
   modalCodeViewer.classList.remove('hidden');
 }
 
-// Copy full raw report matching platform output
+// Copy full raw report matching platform output with smooth label feedback
 function copyReportToClipboard() {
   if (!currentResult || !currentResult.reportText) return;
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(currentResult.reportText).then(() => {
-      alert('Platform report copied to clipboard!');
+      if (copyReportLabel) {
+        const originalText = copyReportLabel.textContent;
+        copyReportLabel.textContent = 'Copied ✓';
+        setTimeout(() => {
+          copyReportLabel.textContent = originalText;
+        }, 2000);
+      }
     }).catch((err) => {
       console.debug('Clipboard writeText failed, using prompt fallback:', err?.message);
       prompt('Copy the report below:', currentResult.reportText);
