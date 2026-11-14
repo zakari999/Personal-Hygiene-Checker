@@ -67,7 +67,10 @@ export function normalizeRepoInput(input, branchOverride = null) {
     branch = treeMatch[2];
   }
 
-  const selectedBranch = branchOverride ? branchOverride.trim() : branch;
+  const overrideStr = (typeof branchOverride === 'object' && branchOverride !== null)
+    ? (branchOverride.branch || null)
+    : branchOverride;
+  const selectedBranch = typeof overrideStr === 'string' ? overrideStr.trim() : branch;
   if (selectedBranch && !/^[a-zA-Z0-9_\-\.\/]+$/.test(selectedBranch)) {
     throw new Error(`Invalid git branch name "${selectedBranch}".`);
   }

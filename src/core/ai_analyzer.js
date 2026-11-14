@@ -147,15 +147,15 @@ export async function analyzeRepository(repoBundle, options = {}) {
 
   try {
     let response;
-    let activeModel = model;
-    const fallbackCandidates = [model, 'gemini-3-flash-preview', 'gemini-3.8-flash', 'gemini-pro-latest'].filter(
-      (m, idx, arr) => arr.indexOf(m) === idx
+    let activeModel = model || 'gemini-3-flash-preview';
+    const fallbackCandidates = [activeModel, 'gemini-3-flash-preview', 'gemini-flash-latest'].filter(
+      (m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx
     );
 
     let lastError = null;
     for (const candidate of fallbackCandidates) {
       try {
-        if (candidate !== model) {
+        if (candidate !== activeModel) {
           console.warn(`Model ${activeModel} failed. Attempting failover to ${candidate}...`);
           onProgress({ step: 'ai_calling', message: `Retrying with ${candidate}...` });
         }
@@ -167,7 +167,7 @@ export async function analyzeRepository(repoBundle, options = {}) {
         if (/401|api key not valid|access_token_type_unsupported|unauthenticated/i.test(err.message)) {
           throw new Error('Invalid Gemini API Key (HTTP 401): The key configured is not a valid Google AI Studio key. Official keys start with "AIzaSy...". Generate a free key at https://aistudio.google.com/app/apikey');
         }
-        if (!/404|not found|unsupported/i.test(err.message)) {
+        if (!/404|not found|unsupported|timeout|aborted|503|500/i.test(err.message)) {
           throw err;
         }
       }
@@ -315,7 +315,7 @@ async function callGeminiAPI(apiKey, model, contents) {
       'x-goog-api-key': apiKey
     },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(20000)
+    signal: AbortSignal.timeout(60000)
   });
 
   if (!response.ok) {

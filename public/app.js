@@ -218,7 +218,7 @@ async function runCheck(isRecheck = false) {
 
   const branch = selectBranch.value || 'main';
   const rubricId = selectRubric.value;
-  const model = modalModel.value || 'gemini-3.8-flash';
+  const model = modalModel.value || 'gemini-3-flash-preview';
 
   // UI state
   progressCard.classList.remove('hidden');

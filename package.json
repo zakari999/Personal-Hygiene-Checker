@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node src/server/server.js",
+    "dev": "node --watch src/server/server.js",
     "check": "node bin/cli.js",
     "test": "node test/run_all_tests.js"
   },
