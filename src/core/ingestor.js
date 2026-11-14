@@ -113,7 +113,7 @@ export function normalizeRepoInput(input) {
 /**
  * Clones or pulls a GitHub repository into a local cache directory using secure array args.
  */
-export function syncRepository(target, cacheBaseDir = path.resolve(process.cwd(), '.repos_cache')) {
+export function syncRepository(target, cacheBaseDir = process.env.REPOS_CACHE_DIR || path.resolve(process.cwd(), '.repos_cache')) {
   if (target.isLocal) {
     return target.path;
   }
